@@ -130,17 +130,23 @@ class BackupLoop:
             return
         try:
             if backup_now(self.db_path, self.client):
+                first = self.last_seen is None
                 self.last_seen = signature
+                log = LOG.warning if first else LOG.info  # warnings reach Render's log by default
+                log('Đã sao lưu database lên kho lưu trữ (%d byte).', signature[1])
         except Exception as error:
             LOG.error('Sao lưu database thất bại: %s', error)
 
     def _run(self):
-        while not self.stop_event.wait(self.interval):
+        self.stop_event.wait(5)  # first upload soon after startup, then on the regular interval
+        while not self.stop_event.is_set():
             self._tick()
+            self.stop_event.wait(self.interval)
 
     def start(self):
         if (self.client or _client()) is None:
             return False
+        LOG.warning('Sao lưu database đã bật: tải lên kho lưu trữ mỗi %d giây khi có thay đổi.', self.interval)
         self.thread = threading.Thread(target=self._run, name='db-backup', daemon=True)
         self.thread.start()
         return True
