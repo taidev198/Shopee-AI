@@ -39,6 +39,8 @@ ROOT = Path(__file__).parent
 DB = Path(os.environ.get('MARKET_DB', str(ROOT / 'market.db')))
 BROWSER_PROFILE = DB.parent / '.browser-profile'
 DB.parent.mkdir(parents=True, exist_ok=True)
+import db_backup
+BACKUP_RESTORE = db_backup.restore_if_missing(DB)  # must precede setup(): a fresh container starts from the last upload
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_local_scheduler()
@@ -57,9 +59,15 @@ async def lifespan(app: FastAPI):
     category_thread = Thread(target=category_loop, name='category-scheduler', daemon=True)
     category_thread.start()
     app.state.market_learning.start()
+    # After a failed restore the empty file must never overwrite the good remote copy.
+    backup = db_backup.BackupLoop(DB) if BACKUP_RESTORE not in ('error', 'corrupt') else None
+    if backup is not None:
+        backup.start()
     try:
         yield
     finally:
+        if backup is not None:
+            backup.stop()
         app.state.market_learning.stop()
         category_stop.set()
         category_thread.join(timeout=5)
