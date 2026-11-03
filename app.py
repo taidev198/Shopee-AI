@@ -332,7 +332,8 @@ def ensure_demo():
         insert_obs(c,'demo','market',m,'2026-10-12','synthetic_demo')
 
 setup()
-ensure_demo()
+if os.environ.get('MARKETLENS_DEMO') == '1':  # synthetic sample shop is opt-in; hosted installs show only collected data
+    ensure_demo()
 
 from auth import install as install_auth
 install_auth(app, db)

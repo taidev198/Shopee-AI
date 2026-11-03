@@ -4,10 +4,13 @@ Only the listed pre-authentication feature suites opt in to this migration.
 New tests, including authentication/RBAC tests, remain anonymous by default.
 There is no application-side testing bypass.
 """
+import os
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
+os.environ.setdefault('MARKETLENS_DEMO', '1')  # suites exercise the opt-in sample shop
 
 
 LEGACY_FEATURE_SUITES = {
