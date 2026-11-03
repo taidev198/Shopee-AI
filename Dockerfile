@@ -4,7 +4,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && python -m playwright install --with-deps chromium
-COPY app.py crawl_worker.py ./
+# app.py imports the analytics, auth, crawler and AI modules at the project
+# root. Copy all root Python modules so the container has the same runtime
+# module set as local development.
+COPY *.py ./
 COPY static ./static
 COPY samples ./samples
 RUN mkdir -p /data
