@@ -212,7 +212,8 @@
   }
 
   function shopKpis(data) {
-    const summary=data.summary||{};
+    const summary=data.summary||{},catalog=summary.catalog;
+    if(number(summary.revenue_30d)==null&&catalog?.product_count)return `<div class="grid-kpi sw-kpis" data-seller-catalog>${kpi('Sản phẩm đã thu thập',num(catalog.product_count),`${num(catalog.sold_known_count)} sản phẩm có số đã bán · ${num(catalog.detail_count)} có chi tiết`,'▤')}${kpi('Tổng đã bán (tích lũy)',number(catalog.sold_total_sum)==null?'—':num(catalog.sold_total_sum),catalog.top3_share_pct==null?'Chưa có số đã bán':`Top 3 chiếm ${esc(catalog.top3_share_pct.toFixed(1))}% tổng đã bán`,'↗')}${kpi('GMV tích lũy ước tính',number(catalog.gmv_cumulative_estimate)==null?'—':money(catalog.gmv_cumulative_estimate),'Giá hiện tại × tổng đã bán; không phải doanh thu 30 ngày','◇')}${kpi('Giá trung vị',number(catalog.price_median)==null?'—':money(catalog.price_median),number(catalog.price_min)==null?'':`Từ ${esc(money(catalog.price_min))} đến ${esc(money(catalog.price_max))}`,'✓')}</div>`;
     return `<div class="grid-kpi sw-kpis">${kpi('Doanh thu 30 ngày',metric('revenue_30d',summary.revenue_30d),summary.revenue_basis||'Thiếu dữ liệu nếu chưa có kỳ báo cáo phù hợp','↗')}${kpi('Đơn thành công',metric('orders_30d',summary.orders_30d),'Số đơn chỉ dùng khi được cung cấp, không thay bằng sản lượng','▤')}${kpi('Lãi đóng góp 30 ngày',metric('contribution_30d',summary.contribution_30d),'Trong phần dữ liệu có chi phí đủ điều kiện','◇')}${kpi('SKU đủ chi phí',num(summary.coverage?.cost_complete??summary.eligible_count??0),`Trong ${num(summary.product_count||0)} sản phẩm`,'✓')}</div>`;
   }
 

@@ -205,6 +205,11 @@ def _health(product, metrics, optimizer, sales_rank, conversion_rank):
     if content_score is not None:
         components['content'] = content_score
     issues.extend(content_issues)
+    title_length = metrics.get('title_length')
+    if title_length:
+        components['title'] = 100 if 40 <= title_length <= 120 else max(0, min(100, 100 * title_length / 40 if title_length < 40 else 100 - (title_length - 120)))
+        if title_length < 40:
+            issues.append('Tiêu đề ngắn (dưới 40 ký tự), khó chứa đủ từ khóa tìm kiếm')
     if sales_rank is not None:
         components['sales_position'] = sales_rank
     if conversion_rank is not None:
@@ -229,11 +234,11 @@ def _health(product, metrics, optimizer, sales_rank, conversion_rank):
         issues.append('Chưa đủ đơn thành công và lượt truy cập cùng kỳ để tính chuyển đổi')
     if metrics['return_rate_pct'] is not None and metrics['return_rate_pct'] > 0:
         issues.append('Cần đối soát nguyên nhân hoàn trả từ dữ liệu người bán')
-    weights = {'content':.15,'sales_position':.15,'conversion_position':.15,'rating':.10,'contribution':.30,'ads':.15}
+    weights = {'title':.10,'content':.15,'sales_position':.15,'conversion_position':.15,'rating':.10,'contribution':.30,'ads':.15}
     coverage = sum(weights[key] for key in components)
     score = sum(value * weights[key] for key,value in components.items()) / coverage if len(components)>=2 and coverage>=.25 else None
     return {'score': _round(score,1), 'confidence': 'Tham khảo; không phải dự báo doanh số' if score is not None else 'Chưa đủ dữ liệu',
-        'coverage': {'known':len(components),'total':6,'pct':_round(100*coverage,1),'components':list(components)},
+        'coverage': {'known':len(components),'total':7,'pct':_round(100*coverage,1),'components':list(components)},
         'components': {key:_round(value,1) for key,value in components.items()}, 'issues': issues,
         'basis': 'Quy tắc mô tả từ chỉ số đã biết; thành phần thiếu không được coi là 0.',
         'sales_basis': metrics.get('sales_position_basis')}
@@ -253,6 +258,11 @@ def _segment(product, metrics, optimizer, sales_rank, conversion_rank):
         if metrics['units_30d'] is not None and metrics['units_basis'] == 'estimated_snapshot_delta':
             return 'slow', 'Có số bán 30 ngày ước tính từ chênh lệch số đã bán; sản lượng thấp hoặc có lượt truy cập nhưng chưa ghi nhận đơn thành công. Phân nhóm tham khảo, cần đối soát báo cáo cùng kỳ.'
         return 'slow', 'Sản lượng cùng kỳ thấp hoặc có lượt truy cập nhưng chưa ghi nhận đơn thành công.'
+    if metrics['units_30d'] is None and sales_rank is not None:
+        if sales_rank <= 25:
+            return 'slow', 'Tổng đã bán thuộc nhóm thấp trong shop (theo dữ liệu đã thu thập); phân nhóm tham khảo, chưa phải sản lượng 30 ngày.'
+        if sales_rank >= 50:
+            return 'growth', 'Tổng đã bán trên trung vị của shop nhưng chưa vào nhóm cao nhất; ứng viên thử nghiệm theo dữ liệu đã thu thập, chưa dự báo tăng trưởng.'
     if conversion_rank is not None and conversion_rank >= 50 and optimizer['cost_complete'] and margin is not None and margin > 0:
         return 'growth', 'Chuyển đổi tương đối tốt trong cùng ngành và biên đóng góp dương; ứng viên thử nghiệm, chưa dự báo tăng trưởng.'
     return 'unknown', 'Cần thêm chi phí, đơn thành công hoặc chỉ số cùng kỳ trước khi phân nhóm.'
@@ -329,6 +339,24 @@ def _shop_priorities(strategies):
     return selected
 
 
+def _catalog(products):
+    """Descriptive totals from collected listings; cumulative sales are not 30-day figures."""
+    prices = sorted(value for value in (_number(p.get('price')) for p in products) if value)
+    sold = [(p, _number(p.get('sold_total'))) for p in products]
+    sold = [(p, value) for p, value in sold if value is not None]
+    total_sold = math.fsum(value for _, value in sold)
+    gmv = [value * _number(p.get('price')) for p, value in sold if _number(p.get('price'))]
+    top = sorted(sold, key=lambda item: -item[1])[:3]
+    return {'product_count': len(products), 'priced_count': len(prices), 'sold_known_count': len(sold),
+        'detail_count': sum(1 for p in products if isinstance(p.get('detail'), dict) and p['detail']),
+        'sold_total_sum': _round(total_sold) if sold else None,
+        'gmv_cumulative_estimate': _round(math.fsum(gmv)) if gmv else None,
+        'price_min': prices[0] if prices else None, 'price_max': prices[-1] if prices else None,
+        'price_median': _round(statistics.median(prices)) if prices else None,
+        'top3_share_pct': _round(100 * math.fsum(v for _, v in top) / total_sold) if total_sold > 0 else None,
+        'top_products': [{'sku': p['sku'], 'name': p['name'], 'sold_total': v} for p, v in top]}
+
+
 def analyze_shop(report, inputs_by_sku):
     source=report.get('own_products') or report.get('products') or []
     inputs_by_sku=inputs_by_sku if isinstance(inputs_by_sku,dict) else {}
@@ -363,6 +391,7 @@ def analyze_shop(report, inputs_by_sku):
         'units_30d':_total(p['metrics']['units_30d'] for p in products),'orders_30d':_total(p['metrics']['orders_30d'] for p in products),
         'contribution_30d':_total(p['metrics']['contribution_30d'] for p in products),
         'eligible_count':coverage['cost_complete'],'coverage':coverage,'segment_counts':dict(Counter(p['segment'] for p in products))}
+    summary['catalog']=_catalog(products)
     total_revenue=summary['revenue_30d']
     for product in products:
         revenue=product['metrics']['revenue_30d']

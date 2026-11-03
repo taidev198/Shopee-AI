@@ -208,7 +208,7 @@ def test_cumulative_only_chief_remains_distinct_from_estimated_or_reported_month
     rows=[product(f'12.{i}',sold_total=sold) for i,sold in enumerate((0,10,20,200),1)]
     result=analyze_shop(report(*rows),{})
     low,chief=result['products'][0],result['products'][-1]
-    assert low['segment']=='unknown'
+    assert low['segment']=='slow' and 'chưa phải sản lượng 30 ngày' in low['segment_reason']
     assert chief['segment']=='chief' and chief['segment_label']=='Chủ lực tham khảo · theo tổng đã bán'
     assert 'tích lũy' in chief['segment_reason'] and 'ước tính 30 ngày' not in chief['segment_label']
     assert chief['metrics']['units_30d'] is None and chief['health']['sales_basis']=='cumulative_sold_total'
@@ -220,7 +220,7 @@ def test_empty_and_missing_data_do_not_pad_strategies_or_create_health_scores():
     assert result['health']['score'] is None and result['strategies']==[]
     sparse=analyze_shop(report(product(rating=None)),{})
     assert sparse['health']['score'] is None
-    assert sparse['products'][0]['health']['coverage']['known']==0
+    assert sparse['products'][0]['health']['coverage']['known']==1  # chỉ có tiêu đề
 
 
 def test_analysis_is_pure_and_json_serializable_with_explicit_coverage():
@@ -258,3 +258,11 @@ def test_shop_priorities_keep_multiple_channels_while_each_sku_retains_full_plan
     assert len({item.get('channel') for item in result['strategies'] if item.get('channel')})>=3
     assert all(product['sales_plan']['strategies'] for product in result['products'])
     assert len(result['strategies_available'])>len(result['strategies'])
+
+
+def test_catalog_summary_uses_only_collected_listing_data():
+    rows=[product('12.1',price=100,sold_total=10),product('12.2',price=200,sold_total=30),product('12.3',price=300,sold_total=None)]
+    catalog=analyze_shop(report(*rows),{})['summary']['catalog']
+    assert catalog['sold_known_count']==2 and catalog['sold_total_sum']==40
+    assert catalog['gmv_cumulative_estimate']==7000 and catalog['price_median']==200
+    assert catalog['top_products'][0]['sku']=='12.2' and catalog['top3_share_pct']==100
