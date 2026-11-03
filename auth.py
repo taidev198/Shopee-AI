@@ -261,9 +261,9 @@ def user_permission(path, method):
         return 'global' if method == 'GET' else None
     if path in ('/api/category-market/analysis', '/api/category-market/products', '/api/category-market/export', '/api/category-market/ml/export'):
         return 'global' if method == 'GET' else None
-    if path in ('/api/dashboard', '/api/export/opportunities', '/api/seller/analysis'):
+    if path in ('/api/dashboard', '/api/export/opportunities', '/api/seller/analysis', '/api/seller/ai/shop'):
         return 'shop' if method == 'GET' else None
-    if path in ('/api/seller/optimize', '/api/seller/actions', '/api/seller/reports', '/api/seller/ai/generate'):
+    if path in ('/api/seller/optimize', '/api/seller/actions', '/api/seller/reports', '/api/seller/ai/generate', '/api/seller/ai/shop-generate'):
         return 'shop' if method == 'POST' else None
     if re.fullmatch(r'/api/seller/products/[^/]+/(?:inputs|market-evidence)', path):
         return 'shop' if method == ('PUT' if path.endswith('/inputs') else 'GET') else None

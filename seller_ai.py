@@ -17,6 +17,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from seller_ai_shop import ShopAI
 from seller_ai_models import local_chat_models, local_model_name, physical_memory_bytes, select_local_chat_model
 from seller_ai_strategy_context import DIVERSITY_PROMPT, enrich_fact_catalog
 from seller_ai_repair import targeted_repair, merge_model_patch, correction_task, REPAIR_SYSTEM
@@ -203,6 +204,11 @@ class ModelPlan(StrictModel):
 class SettingsUpdate(StrictModel):
     model: str | None = Field(default=None, min_length=1, max_length=120)
     enabled: bool | None = None
+
+
+class ShopGenerateRequest(StrictModel):
+    shop_id: str = Field(min_length=1, max_length=200)
+    force: bool = False
 
 
 class GenerateRequest(StrictModel):
@@ -665,6 +671,9 @@ class SellerAIService:
     def enrich(self, analysis):
         config = self.settings()
         result = {**analysis, 'products': [dict(item) for item in analysis.get('products', [])], 'ai_config': config}
+        shop_ai = getattr(self, 'shop_ai', None)
+        if shop_ai is not None and analysis.get('shop'):
+            result['shop_ai'] = shop_ai.latest(str(analysis['shop'].get('id') or ''), analysis)
         shop_id = str((analysis.get('shop') or {}).get('id') or '')
         with self.db() as c:
             jobs = [dict(row) for row in c.execute('SELECT * FROM seller_ai_jobs WHERE shop_id=? ORDER BY created_at DESC,rowid DESC', (shop_id,))]
@@ -720,6 +729,16 @@ def install(app, db, snapshot):
     @router.get('/jobs/{job_id}')
     def job(job_id: str, shop_id: str):
         return service.job(job_id, shop_id)
+
+    shop_ai = service.shop_ai = ShopAI(service)
+
+    @router.post('/shop-generate')
+    def shop_generate(payload: ShopGenerateRequest):
+        return shop_ai.start(payload.shop_id, payload.force)
+
+    @router.get('/shop')
+    def shop_overview(shop_id: str):
+        return shop_ai.latest(shop_id)
 
     app.include_router(router)
     return service

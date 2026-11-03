@@ -272,10 +272,42 @@
     <details class="sw-health-basis"><summary>Cơ sở tính điểm và dữ liệu còn thiếu</summary><p>${esc(health.basis||'Tính từ các chỉ số sản phẩm đã có; chỉ số thiếu không được gán bằng 0.')}</p>${strings(health.issues).length?`<ul>${strings(health.issues).map(issue=>`<li>${esc(issue)}</li>`).join('')}</ul>`:''}<p>Các nhóm sản phẩm không trùng nhau. Nhóm biên lợi nhuận thấp cần đủ chi phí và biên đóng góp không dương hoặc thấp hơn mục tiêu đã nhập.</p></details>`}</div></section>`;
   }
 
-  function shopAnalysis(entry) {
+  const shopAiState=entry=>entry.shopAi||(entry.shopAi={data:null,busy:false,error:'',timer:null,loaded:false});
+  const shopAiActive=state=>['queued','running'].includes(state.data?.job?.status);
+  function scheduleShopAiPoll(id) {
+    const state=shopAiState(entryFor(id));
+    if(state.timer!==null||!shopAiActive(state))return;
+    state.timer=setTimeout(()=>{state.timer=null;loadShopAi(id);},3000);
+  }
+  async function loadShopAi(id) {
+    const state=shopAiState(entryFor(id));state.loaded=true;
+    try{state.data=await sellerApi('/api/seller/ai/shop'+query(id));state.error='';}
+    catch(error){state.error=error.message||'Chưa đọc được kết quả AI toàn shop.';}
+    finally{scheduleShopAiPoll(id);redraw(id);}
+  }
+  async function startShopAi(id,force=false) {
+    const state=shopAiState(entryFor(id));if(state.busy||shopAiActive(state))return;
+    state.busy=true;state.error='';redraw(id);
+    try{await sellerApi('/api/seller/ai/shop-generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shop_id:id,force})});}
+    catch(error){state.error=error.message||'Chưa tạo được phân tích AI toàn shop.';}
+    finally{state.busy=false;await loadShopAi(id);}
+  }
+
+  function shopAiPanel(entry,id) {
+    const state=shopAiState(entry);
+    if(!state.loaded){state.loaded=true;state.data=entry.data?.shop_ai||null;Promise.resolve().then(()=>scheduleShopAiPoll(id));}
+    const job=state.data?.job,result=state.data?.result,active=shopAiActive(state)||state.busy;
+    const seconds=ms=>number(ms)==null?'':Math.round(ms/1000)+' giây';
+    const status=active?'AI đang đọc toàn bộ danh sách sản phẩm của shop… thường xong trong 1–2 phút.':job?.status==='failed'?esc(job.error||'Phân tích AI thất bại.'):result?`Hoàn tất${job?.telemetry?.duration_ms?' trong '+seconds(job.telemetry.duration_ms):''} · model ${esc(job?.model||'')}${state.data.stale?' · <strong>Dữ liệu shop đã thay đổi, nên phân tích lại</strong>':''}`:'Chưa có phân tích AI cho toàn shop.';
+    const priority=(item,index)=>`<article class="sw-ai-shop-priority"><h4>${index+1}. ${esc(item.title)}</h4><p><strong>Vì sao:</strong> ${esc(item.why)}</p><p><strong>Việc cần làm:</strong> ${esc(item.action)}</p>${list(item.products).length?`<div class="sw-ai-shop-products">${list(item.products).map(product=>`<button type="button" class="sw-tag" data-seller-detail="${esc(product.sku)}">${esc(product.name)}</button>`).join('')}</div>`:''}</article>`;
+    const bullets=(title,items)=>strings(items).length?`<div><h4>${title}</h4><ul>${strings(items).map(text=>`<li>${esc(text)}</li>`).join('')}</ul></div>`:'';
+    return `<section class="panel sw-ai-shop" data-seller-ai-shop><div class="panel-head"><div><h3 class="panel-title">Phân tích AI toàn shop</h3><p class="panel-sub">${status}</p></div><button class="btn btn-primary" data-seller-ai-shop-run ${active?'disabled':''}>${active?'Đang phân tích…':result?'Phân tích lại toàn shop':'Phân tích toàn shop bằng AI'}</button></div>${state.error?`<div class="warning-soft">${esc(state.error)}</div>`:''}${result?`<p class="sw-ai-shop-summary">${esc(result.summary)}</p><div class="sw-ai-shop-grid">${list(result.priorities).map(priority).join('')}</div><div class="sw-ai-shop-notes">${bullets('Việc làm nhanh',result.quick_wins)}${bullets('Rủi ro',result.risks)}${bullets('Dữ liệu còn thiếu',result.data_gaps)}</div><small class="sw-muted">AI chỉ đọc số liệu đã thu thập; nhận định mang tính tham khảo, cần đối chiếu trước khi hành động.</small>`:''}</section>`;
+  }
+
+  function shopAnalysis(entry,id=currentId()) {
     const data=entry.data,products=list(data.products),selected=shopGroups.find(group=>group.key===entry.segment);
     const filtered=selected?products.filter(product=>shopSegment(product)===selected.key):products;
-    return shopIntelligence(entry)+(entry.intelligenceModule!=='shop'?'':shopKpis(data)+`<section class="panel" id="sellerShopProducts"><div class="panel-head"><div><h3 class="panel-title">${selected?esc(selected.label):'Danh mục cần ưu tiên'} · ${num(filtered.length)} sản phẩm</h3><p class="panel-sub">${selected?`${num(filtered.length)}/${num(products.length)} sản phẩm trong shop đang chọn. Xem cơ sở phân nhóm ở từng dòng.`:'Bấm một nhóm ở trên để xem sản phẩm và cơ sở phân loại.'}</p></div><div class="sw-card-actions">${selected?'<button class="btn btn-white btn-sm" data-seller-segment="all">Xem tất cả sản phẩm</button>':''}<button class="btn btn-soft btn-sm" data-seller-view="strategy" data-seller-reset-sku>Xem chiến lược →</button></div></div>${filtered.length?productRows(filtered):empty(products.length?'Chưa có sản phẩm trong nhóm này':'Shop chưa có sản phẩm',products.length?'Nhóm này hiện có 0 sản phẩm theo dữ liệu đã thu thập. Chọn nhóm khác hoặc xem tất cả sản phẩm.':'Quét shop hoặc nhập báo cáo trước khi phân tích hiệu quả từng SKU.')}</section>`);
+    return shopIntelligence(entry)+(entry.intelligenceModule!=='shop'?'':shopAiPanel(entry,id)+shopKpis(data)+`<section class="panel" id="sellerShopProducts"><div class="panel-head"><div><h3 class="panel-title">${selected?esc(selected.label):'Danh mục cần ưu tiên'} · ${num(filtered.length)} sản phẩm</h3><p class="panel-sub">${selected?`${num(filtered.length)}/${num(products.length)} sản phẩm trong shop đang chọn. Xem cơ sở phân nhóm ở từng dòng.`:'Bấm một nhóm ở trên để xem sản phẩm và cơ sở phân loại.'}</p></div><div class="sw-card-actions">${selected?'<button class="btn btn-white btn-sm" data-seller-segment="all">Xem tất cả sản phẩm</button>':''}<button class="btn btn-soft btn-sm" data-seller-view="strategy" data-seller-reset-sku>Xem chiến lược →</button></div></div>${filtered.length?productRows(filtered):empty(products.length?'Chưa có sản phẩm trong nhóm này':'Shop chưa có sản phẩm',products.length?'Nhóm này hiện có 0 sản phẩm theo dữ liệu đã thu thập. Chọn nhóm khác hoặc xem tất cả sản phẩm.':'Quét shop hoặc nhập báo cáo trước khi phân tích hiệu quả từng SKU.')}</section>`);
   }
 
   function planDetails(plan) {
@@ -480,6 +512,7 @@
     const button=event.target.closest('button');if(!button||button.disabled)return;
     const d=button.dataset,entry=entryFor(currentId());
     if(d.sellerShop)return selectShop(d.sellerShop);
+    if('sellerAiShopRun'in d)return startShopAi(currentId(),!!shopAiState(entry).data?.result);
     if(d.sellerIntelligenceModule){
       if(!intelligenceModules.some(([mode])=>mode===d.sellerIntelligenceModule))return;
       entry.intelligenceModule=d.sellerIntelligenceModule;redraw(currentId());return;
