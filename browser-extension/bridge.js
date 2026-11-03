@@ -1,6 +1,6 @@
-// This bridge is deliberately limited to the local MarketLens app window.
+// This bridge is deliberately limited to the MarketLens app window (local or the Render deployment).
 (() => {
-  const origins = new Set(['http://127.0.0.1:8000', 'http://localhost:8000']);
+  const origins = new Set(['http://127.0.0.1:8000', 'http://localhost:8000', 'https://shopee-ai.onrender.com']);
   if (window.top !== window || !origins.has(window.location.origin)) return;
   const pending = new Set();
   window.addEventListener('message', async event => {

@@ -182,3 +182,9 @@ test('service worker traverses pages anew per request and closes only its task t
     assert.deepEqual(removed, [1, 2]);
   } finally { globalThis.chrome = originalChrome; }
 });
+
+test('isAllowedAppUrl accepts the Render deployment only over https with the exact host', () => {
+  assert.equal(isAllowedAppUrl('https://shopee-ai.onrender.com/user'), true);
+  assert.equal(isAllowedAppUrl('http://shopee-ai.onrender.com/'), false);
+  assert.equal(isAllowedAppUrl('https://shopee-ai.onrender.com.evil.example/'), false);
+});

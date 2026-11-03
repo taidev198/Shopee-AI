@@ -10,7 +10,8 @@
     "https://shopee.vn/*",
     "https://www.shopee.vn/*",
     "http://127.0.0.1:8000/*",
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "https://shopee-ai.onrender.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -20,7 +21,8 @@
     {
       "matches": [
         "http://127.0.0.1:8000/*",
-        "http://localhost:8000/*"
+        "http://localhost:8000/*",
+        "https://shopee-ai.onrender.com/*"
       ],
       "js": [
         "bridge.js"

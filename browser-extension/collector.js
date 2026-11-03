@@ -2,7 +2,7 @@ export function isAllowedAppUrl(value) {
   try {
     const url = new URL(value);
     return !url.username && !url.password &&
-      ['http://127.0.0.1:8000', 'http://localhost:8000'].includes(url.origin);
+      ['http://127.0.0.1:8000', 'http://localhost:8000', 'https://shopee-ai.onrender.com'].includes(url.origin);
   } catch { return false; }
 }
 

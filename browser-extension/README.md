@@ -12,13 +12,13 @@ tối đa 5 trang và 150 sản phẩm; không có dữ liệu sản phẩm mẫ
 
 1. Trong Chrome thường dùng, mở `chrome://extensions` và bật **Developer mode**.
 2. Bấm **Load unpacked** và chọn thư mục `browser-extension` của dự án.
-3. Mở hoặc tải lại `http://127.0.0.1:8000` (hoặc `http://localhost:8000`).
+3. Mở hoặc tải lại `http://127.0.0.1:8000`, `http://localhost:8000` hoặc bản host `https://shopee-ai.onrender.com`.
 4. Chọn chế độ Chrome trên ứng dụng, nhập URL shop rồi bấm **Quét sản phẩm**.
 
 Sau khi sửa mã tiện ích, bấm biểu tượng **Reload** của tiện ích trong
 `chrome://extensions` và tải lại trang MarketLens.
 
-Tiện ích chỉ hoạt động trên trang MarketLens ở cổng 8000 và trang Shopee Việt
+Tiện ích chỉ hoạt động trên trang MarketLens (cổng 8000 hoặc shopee-ai.onrender.com) và trang Shopee Việt
 Nam. Quyền `scripting` phục vụ đọc DOM công khai; không có quyền cookies,
 debugger hay truy cập các website khác. Nếu Shopee chuyển tới trang xác minh
 hoặc đăng nhập, lượt quét dừng và giữ tab Shopee đó để bạn xử lý thủ công.
