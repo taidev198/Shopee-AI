@@ -1,38 +1,47 @@
-"""Keep the SQLite database across container restarts by mirroring it to remote storage.
+"""Keep the SQLite database across container restarts by mirroring it to S3-compatible storage.
 
-Two stores are supported, chosen by environment variables:
-  * S3-compatible (Cloudflare R2, B2, ...): BACKUP_BUCKET, BACKUP_ENDPOINT,
-    BACKUP_ACCESS_KEY_ID, BACKUP_SECRET_ACCESS_KEY
-  * Cloudflare D1: BACKUP_D1_ACCOUNT_ID, BACKUP_D1_DATABASE_ID, BACKUP_D1_API_TOKEN
-Without them the app behaves as before. Restore runs before the schema is created,
-so a fresh container starts from the last upload instead of an empty file.
+Enabled only when BACKUP_BUCKET, BACKUP_ENDPOINT, BACKUP_ACCESS_KEY_ID and
+BACKUP_SECRET_ACCESS_KEY are set (Cloudflare R2, Backblaze B2, ...). Without them
+the app behaves as before. Restore runs before the schema is created, so a fresh
+container starts from the last upload instead of an empty file.
 """
-import base64
 import gzip
-import hashlib
-import json
 import logging
 import os
 import shutil
 import sqlite3
-import sys
 import tempfile
 import threading
-import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 LOG = logging.getLogger('marketlens.backup')
 OBJECT_KEY = 'market.db.gz'
 PREVIOUS_KEY = 'market.db.prev.gz'
 INTERVAL_SECONDS = 60
-D1_INTERVAL_SECONDS = 180  # D1 bills per row written; a snapshot is several rows
-D1_CHUNK_BYTES = 512 * 1024
 
 
 def _clean(name):
     return ''.join(os.environ.get(name, '').split())
+
+
+def _client():
+    """Return (client, bucket) or None when backup is not configured."""
+    bucket, endpoint = _clean('BACKUP_BUCKET'), _clean('BACKUP_ENDPOINT')
+    key, secret = _clean('BACKUP_ACCESS_KEY_ID'), _clean('BACKUP_SECRET_ACCESS_KEY')
+    if not (bucket and endpoint and key and secret):
+        return None
+    import boto3
+    from botocore.config import Config
+    client = boto3.client('s3', endpoint_url=endpoint, aws_access_key_id=key, aws_secret_access_key=secret,
+                          region_name='auto', config=Config(retries={'max_attempts': 3}, signature_version='s3v4'))
+    return client, bucket
+
+
+def fingerprint():
+    """Short hashes of the configured credentials, so a mistyped value can be spotted without revealing it."""
+    import hashlib
+    return ' '.join(f'{label}={hashlib.sha256(_clean(name).encode()).hexdigest()[:8]}(len {len(_clean(name))})'
+                    for label, name in (('key', 'BACKUP_ACCESS_KEY_ID'), ('secret', 'BACKUP_SECRET_ACCESS_KEY')))
 
 
 def _is_missing(error):
@@ -40,139 +49,22 @@ def _is_missing(error):
     return code in ('NoSuchKey', '404', 'NotFound')
 
 
-class S3Store:
-    """Latest snapshot as market.db.gz, previous one kept as market.db.prev.gz."""
-    name = 's3'
-    interval = INTERVAL_SECONDS
-
-    def __init__(self, client, bucket):
-        self.client, self.bucket = client, bucket
-
-    def fetch(self):
-        with tempfile.TemporaryFile() as stream:
-            try:
-                self.client.download_fileobj(self.bucket, OBJECT_KEY, stream)
-            except Exception as error:
-                if _is_missing(error):
-                    return None
-                raise
-            stream.seek(0)
-            return stream.read()
-
-    def save(self, data):
-        try:
-            self.client.copy_object(Bucket=self.bucket, Key=PREVIOUS_KEY,
-                                    CopySource={'Bucket': self.bucket, 'Key': OBJECT_KEY})
-        except Exception as error:
-            if not _is_missing(error):
-                LOG.debug('Không giữ được bản trước: %s', error)
-        with tempfile.TemporaryFile() as stream:
-            stream.write(data)
-            stream.seek(0)
-            self.client.upload_fileobj(stream, self.bucket, OBJECT_KEY)
-
-
-class D1Store:
-    """Snapshot split into base64 parts; the meta row flips last, so readers never see a partial upload."""
-    name = 'd1'
-    interval = D1_INTERVAL_SECONDS
-
-    def __init__(self, account_id, database_id, token, chunk_bytes=D1_CHUNK_BYTES, opener=None):
-        self.url = f'https://api.cloudflare.com/client/v4/accounts/{account_id}/d1/database/{database_id}/query'
-        self.token, self.chunk_bytes = token, chunk_bytes
-        self.opener = opener or urllib.request.urlopen
-        self.ready = False
-
-    def _query(self, sql, params=()):
-        body = json.dumps({'sql': sql, 'params': list(params)}).encode()
-        request = urllib.request.Request(self.url, data=body, method='POST', headers={
-            'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json'})
-        try:
-            with self.opener(request, timeout=60) as response:
-                payload = json.loads(response.read())
-        except urllib.error.HTTPError as error:
-            detail = error.read()[:300].decode('utf-8', 'replace')
-            raise RuntimeError(f'D1 trả HTTP {error.code}: {detail}') from None
-        if not payload.get('success'):
-            raise RuntimeError('D1 báo lỗi: ' + json.dumps(payload.get('errors'))[:300])
-        return (payload.get('result') or [{}])[0].get('results') or []
-
-    def _prepare(self):
-        if self.ready:
-            return
-        self._query('CREATE TABLE IF NOT EXISTS backup_parts(generation INTEGER NOT NULL, part INTEGER NOT NULL, '
-                    'data TEXT NOT NULL, PRIMARY KEY(generation, part))')
-        self._query('CREATE TABLE IF NOT EXISTS backup_meta(id INTEGER PRIMARY KEY CHECK(id=1), generation INTEGER NOT NULL, '
-                    'previous INTEGER, parts INTEGER NOT NULL, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, updated_at TEXT NOT NULL)')
-        self.ready = True
-
-    def fetch(self):
-        self._prepare()
-        meta = self._query('SELECT generation, parts, bytes, sha256 FROM backup_meta WHERE id=1')
-        if not meta:
-            return None
-        meta = meta[0]
-        chunks = []
-        for part in range(meta['parts']):
-            rows = self._query('SELECT data FROM backup_parts WHERE generation=? AND part=?', (meta['generation'], part))
-            if not rows:
-                raise RuntimeError(f'Thiếu phần {part} của bản sao lưu trên D1.')
-            chunks.append(base64.b64decode(rows[0]['data']))
-        data = b''.join(chunks)
-        if len(data) != meta['bytes'] or hashlib.sha256(data).hexdigest() != meta['sha256']:
-            raise RuntimeError('Bản sao lưu trên D1 không khớp checksum.')
-        return data
-
-    def save(self, data):
-        self._prepare()
-        meta = self._query('SELECT generation FROM backup_meta WHERE id=1')
-        previous = meta[0]['generation'] if meta else None
-        generation = time.time_ns() // 1_000_000
-        parts = [data[i:i + self.chunk_bytes] for i in range(0, len(data), self.chunk_bytes)] or [b'']
-        for index, chunk in enumerate(parts):
-            self._query('INSERT INTO backup_parts(generation, part, data) VALUES(?,?,?)',
-                        (generation, index, base64.b64encode(chunk).decode('ascii')))
-        self._query('INSERT INTO backup_meta(id, generation, previous, parts, bytes, sha256, updated_at) VALUES(1,?,?,?,?,?,datetime(\'now\')) '
-                    'ON CONFLICT(id) DO UPDATE SET generation=excluded.generation, previous=excluded.previous, '
-                    'parts=excluded.parts, bytes=excluded.bytes, sha256=excluded.sha256, updated_at=excluded.updated_at',
-                    (generation, previous, len(parts), len(data), hashlib.sha256(data).hexdigest()))
-        # keep the newest two generations
-        self._query('DELETE FROM backup_parts WHERE generation NOT IN (?, ?)', (generation, previous if previous is not None else generation))
-
-
-def configured_store():
-    """Return the store selected by environment variables, or None."""
-    bucket, endpoint = _clean('BACKUP_BUCKET'), _clean('BACKUP_ENDPOINT')
-    key, secret = _clean('BACKUP_ACCESS_KEY_ID'), _clean('BACKUP_SECRET_ACCESS_KEY')
-    if bucket and endpoint and key and secret:
-        import boto3
-        from botocore.config import Config
-        client = boto3.client('s3', endpoint_url=endpoint, aws_access_key_id=key, aws_secret_access_key=secret,
-                              region_name='auto', config=Config(retries={'max_attempts': 3}, signature_version='s3v4'))
-        return S3Store(client, bucket)
-    account, database, token = _clean('BACKUP_D1_ACCOUNT_ID'), _clean('BACKUP_D1_DATABASE_ID'), _clean('BACKUP_D1_API_TOKEN')
-    if account and database and token:
-        return D1Store(account, database, token)
-    return None
-
-
-def restore_if_missing(db_path, store=None):
+def restore_if_missing(db_path, client=None):
     """Download the last upload when the local database file does not exist."""
     db_path = Path(db_path)
     if db_path.exists() and db_path.stat().st_size > 0:
         return 'present'
-    store = store or configured_store()
-    if store is None:
+    configured = client or _client()
+    if configured is None:
         LOG.warning('Sao lưu chưa cấu hình (BACKUP_*): dữ liệu sẽ mất khi container khởi động lại.')
         return 'disabled'
+    s3, bucket = configured if isinstance(configured, tuple) else (configured, _clean('BACKUP_BUCKET'))
     try:
-        packed = store.fetch()
-        if packed is None:
-            LOG.warning('Chưa có bản sao lưu trên kho lưu trữ; bắt đầu với database trống.')
-            return 'empty'
         with tempfile.NamedTemporaryFile(dir=db_path.parent, delete=False) as raw:
-            raw.write(gzip.decompress(packed))
-        os.replace(raw.name, db_path)
+            s3.download_fileobj(bucket, OBJECT_KEY, raw)
+        with gzip.open(raw.name, 'rb') as source, open(db_path, 'wb') as target:
+            shutil.copyfileobj(source, target)
+        os.unlink(raw.name)
         check = sqlite3.connect(db_path)
         try:
             ok = check.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
@@ -185,16 +77,23 @@ def restore_if_missing(db_path, store=None):
         LOG.warning('Đã khôi phục database từ bản sao lưu (%d byte).', db_path.stat().st_size)
         return 'restored'
     except Exception as error:
-        LOG.error('Không khôi phục được từ kho sao lưu: %s', error)
+        for leftover in (locals().get('raw'),):
+            if leftover is not None and os.path.exists(leftover.name):
+                os.unlink(leftover.name)
+        if _is_missing(error):
+            LOG.warning('Chưa có bản sao lưu trên kho lưu trữ; bắt đầu với database trống.')
+            return 'empty'
+        LOG.error('Không khôi phục được từ kho sao lưu: %s [%s]', error, fingerprint())
         return 'error'
 
 
-def backup_now(db_path, store=None):
+def backup_now(db_path, client=None):
     """Upload a consistent snapshot; returns True when uploaded."""
     db_path = Path(db_path)
-    store = store or configured_store()
-    if store is None or not db_path.exists():
+    configured = client or _client()
+    if configured is None or not db_path.exists():
         return False
+    s3, bucket = configured if isinstance(configured, tuple) else (configured, _clean('BACKUP_BUCKET'))
     with tempfile.TemporaryDirectory(dir=db_path.parent) as folder:
         snapshot, packed = Path(folder, 'snapshot.db'), Path(folder, 'snapshot.db.gz')
         source = sqlite3.connect(db_path)
@@ -206,16 +105,21 @@ def backup_now(db_path, store=None):
             source.close()
         with open(snapshot, 'rb') as raw, gzip.open(packed, 'wb', compresslevel=6) as out:
             shutil.copyfileobj(raw, out)
-        store.save(packed.read_bytes())
+        try:
+            s3.copy_object(Bucket=bucket, Key=PREVIOUS_KEY, CopySource={'Bucket': bucket, 'Key': OBJECT_KEY})
+        except Exception as error:
+            if not _is_missing(error):
+                LOG.debug('Không giữ được bản trước: %s', error)
+        with open(packed, 'rb') as stream:
+            s3.upload_fileobj(stream, bucket, OBJECT_KEY)
     return True
 
 
 class BackupLoop:
     """Uploads after changes (checked by file size/mtime) and once more at shutdown."""
 
-    def __init__(self, db_path, interval=None, store=None):
-        self.db_path, self.store = Path(db_path), store
-        self.interval = interval
+    def __init__(self, db_path, interval=INTERVAL_SECONDS, client=None):
+        self.db_path, self.interval, self.client = Path(db_path), interval, client
         self.stop_event = threading.Event()
         self.thread = None
         self.last_seen = None
@@ -232,7 +136,7 @@ class BackupLoop:
         if signature is None or (not force and signature == self.last_seen):
             return
         try:
-            if backup_now(self.db_path, self.store):
+            if backup_now(self.db_path, self.client):
                 first = self.last_seen is None
                 self.last_seen = signature
                 log = LOG.warning if first else LOG.info  # warnings reach Render's log by default
@@ -247,11 +151,9 @@ class BackupLoop:
             self.stop_event.wait(self.interval)
 
     def start(self):
-        self.store = self.store or configured_store()
-        if self.store is None:
+        if (self.client or _client()) is None:
             return False
-        self.interval = self.interval or self.store.interval
-        LOG.warning('Sao lưu database đã bật (%s): tải lên mỗi %d giây khi có thay đổi.', self.store.name, self.interval)
+        LOG.warning('Sao lưu database đã bật: tải lên kho lưu trữ mỗi %d giây khi có thay đổi.', self.interval)
         self.thread = threading.Thread(target=self._run, name='db-backup', daemon=True)
         self.thread.start()
         return True
@@ -261,32 +163,3 @@ class BackupLoop:
         if self.thread is not None:
             self.thread.join(timeout=5)
             self._tick(force=True)
-
-
-def selftest():
-    """Round-trip a tiny database through the configured store: python db_backup.py --selftest"""
-    store = configured_store()
-    if store is None:
-        print('Chưa đặt biến BACKUP_* (S3) hoặc BACKUP_D1_* (D1).')
-        return 1
-    with tempfile.TemporaryDirectory() as folder:
-        path = Path(folder, 'probe.db')
-        conn = sqlite3.connect(path)
-        conn.execute('CREATE TABLE t(v TEXT)')
-        conn.execute("INSERT INTO t VALUES('ok')")
-        conn.commit()
-        conn.close()
-        previous = store.fetch()
-        backup_now(path, store)
-        restored = Path(folder, 'restored.db')
-        data = gzip.decompress(store.fetch())
-        restored.write_bytes(data)
-        value = sqlite3.connect(restored).execute('SELECT v FROM t').fetchone()
-        if previous is not None:
-            store.save(previous)  # put the real backup back
-    print(f'{store.name}: ghi và đọc lại {"THÀNH CÔNG" if value == ("ok",) else "THẤT BẠI"}')
-    return 0 if value == ('ok',) else 1
-
-
-if __name__ == '__main__':
-    sys.exit(selftest() if '--selftest' in sys.argv else 0)
