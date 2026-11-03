@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "MarketLens — Đọc sản phẩm Shopee",
+  "version": "1.3.7",
+  "description": "Đọc thẻ sản phẩm công khai trong Chrome khi bạn bấm Quét sản phẩm tại MarketLens trên máy này.",
+  "permissions": [
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://shopee.vn/*",
+    "https://www.shopee.vn/*",
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1:8000/*",
+        "http://localhost:8000/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

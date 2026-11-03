@@ -1,0 +1,13 @@
+services:
+  marketlens:
+    build: .
+    ports:
+      - '127.0.0.1:8000:8000'
+    volumes:
+      - marketlens_data:/data
+    restart: unless-stopped
+    environment:
+      MARKET_DB: /data/market.db
+      # MARKET_INGEST_KEY: set-a-long-random-secret-for-approved-connectors
+volumes:
+  marketlens_data:

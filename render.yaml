@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: marketlens
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: MARKET_DB
+        value: /data/market.db
