@@ -258,3 +258,13 @@ Sản phẩm dùng thông tin đã lưu của SKU. Tối ưu giá cho phép sử
 
 Gateway (`ollama_gateway.py`) chỉ chuyển tiếp `/api/tags` và `/api/generate`, và yêu cầu Bearer token.
 URL quick tunnel đổi mỗi lần chạy lại; muốn URL cố định hãy dùng named tunnel của Cloudflare. Máy phải bật thì AI mới hoạt động.
+
+## Giữ dữ liệu khi Render deploy lại (Litestream + Cloudflare R2)
+
+Gói free của Render xóa đĩa mỗi lần deploy/khởi động lại. App tự sao lưu SQLite lên kho S3 và khôi phục khi khởi động:
+
+1. Cloudflare Dashboard → R2 → tạo bucket (ví dụ `marketlens-db`), rồi tạo API token quyền Object Read & Write cho bucket đó.
+2. Trên Render → Environment, đặt `LITESTREAM_BUCKET`, `LITESTREAM_ENDPOINT` (`https://<account_id>.r2.cloudflarestorage.com`), `LITESTREAM_ACCESS_KEY_ID`, `LITESTREAM_SECRET_ACCESS_KEY`.
+3. Deploy. Log khởi động sẽ có dòng của `litestream replicate`; từ đó dữ liệu sống sót qua mọi lần deploy.
+
+Chưa đặt `LITESTREAM_BUCKET` thì app chạy như cũ và ghi cảnh báo vào log.
