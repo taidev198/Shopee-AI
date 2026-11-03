@@ -268,3 +268,19 @@ Gói free của Render xóa đĩa mỗi lần deploy/khởi động lại. App t
 3. Deploy. Log có dòng "Đã khôi phục database…" (hoặc "Chưa có bản sao lưu…" ở lần đầu).
 
 Kho giữ `market.db.gz` (mới nhất) và `market.db.prev.gz` (bản trước đó). Chưa đặt biến `BACKUP_*` thì app chạy như cũ và ghi cảnh báo.
+
+### Dùng Cloudflare D1 làm nơi sao lưu (thay cho R2)
+
+App vẫn chạy SQLite; D1 chỉ chứa bản chụp (nén, chia phần ~512 KB). Đặt trên Render (không đặt cùng lúc với bộ `BACKUP_*` của R2, vì R2 được ưu tiên):
+
+- `BACKUP_D1_ACCOUNT_ID`: Account ID của Cloudflare
+- `BACKUP_D1_DATABASE_ID`: ID của database D1 (UUID)
+- `BACKUP_D1_API_TOKEN`: API token tạo ở My Profile → API Tokens, quyền **Account → D1 → Edit**
+
+Kiểm tra trước khi deploy (đặt 3 biến vào terminal rồi chạy; chỉ nên chạy khi D1 còn trống):
+
+```bash
+python db_backup.py --selftest
+```
+
+D1 giới hạn 100.000 dòng ghi/ngày ở gói free và mỗi lần sao lưu ghi vài dòng, nên app tải lên mỗi 3 phút khi có thay đổi. DB lớn hàng trăm MB nên dùng R2.
