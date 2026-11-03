@@ -13,11 +13,19 @@
     clearTimeout(request.timer);
     pending.delete(message.requestId);
     if (message.ok) request.resolve(message.result);
-    else request.reject(Object.assign(new Error(message.error || 'Chrome không đọc được trang shop.'),
+    else {
+      if (message.blocked === true || message.verificationRequired === true) {
+        try {
+          window.dispatchEvent(new CustomEvent('marketlens:verification',
+            {detail: {message: message.error || '', verificationRequired: message.verificationRequired === true}}));
+        } catch {}
+      }
+      request.reject(Object.assign(new Error(message.error || 'Chrome không đọc được trang shop.'),
       {blocked: message.blocked === true, verificationRequired: message.verificationRequired === true,
         retryable: message.retryable === true,
         inspectionRequired: message.inspectionRequired === true,
         code: message.blocked ? 'blocked' : message.code}));
+    }
   });
 
   function request(action, data, timeout) {
