@@ -249,3 +249,12 @@ Màn hình **Phân tích ngành hàng** tự đọc báo cáo mới mỗi 30 gi�
 Shop Analysis có năm tab nội bộ: **Shop**, **Sản phẩm**, **Tối ưu giá**, **Đối thủ**, **Cơ hội**. Chọn SKU một lần để dùng xuyên suốt các góc nhìn; mỗi shop giữ lựa chọn và bộ lọc riêng. Khối Shop tổng hợp điểm sức khỏe, nhóm chủ lực / tiềm năng / biên thấp / bán chậm và nhóm chưa đủ dữ liệu; bấm nhóm để lọc danh sách thực tế.
 
 Sản phẩm dùng thông tin đã lưu của SKU. Tối ưu giá cho phép sửa giả định và so ba mức giá ngay trong trình duyệt, có nút khôi phục dữ liệu SKU; không tự ghi đè chi phí trong database. Đối thủ đối chiếu quy cách và chỉ tổng hợp khoảng giá của các mặt hàng đủ bằng chứng tương đương. Cơ hội đọc lịch sử quan sát sản phẩm và kết quả ML đã lưu; chưa có đủ lịch sử thì nêu dữ liệu còn thiếu, không thay bằng chỉ số tìm kiếm giả lập. Các nút mở Product Optimizer, phân tích đối thủ và phân tích ngành hàng tiếp tục dùng chức năng đầy đủ của workspace.
+
+## Dùng Ollama trên máy cá nhân cho bản host trên Render
+
+1. Mở Ollama.app, rồi chạy `./start_ollama_tunnel.command` trên máy có model (cần `cloudflared`).
+2. Script in ra `OLLAMA_API_TOKEN` và một URL `https://xxxx.trycloudflare.com`.
+3. Trên Render, mở service → Environment, đặt `OLLAMA_BASE_URL` (URL trên) và `OLLAMA_API_TOKEN`, rồi redeploy.
+
+Gateway (`ollama_gateway.py`) chỉ chuyển tiếp `/api/tags` và `/api/generate`, và yêu cầu Bearer token.
+URL quick tunnel đổi mỗi lần chạy lại; muốn URL cố định hãy dùng named tunnel của Cloudflare. Máy phải bật thì AI mới hoạt động.

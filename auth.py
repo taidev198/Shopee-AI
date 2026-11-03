@@ -1,6 +1,7 @@
 """Local accounts, revocable sessions, CSRF and server-side workspace access."""
 import hashlib
 import hmac
+import os
 import json
 import math
 import re
@@ -237,6 +238,11 @@ def same_local_origin(scope):
         server = scope.get('server') or ('', 0)
         if server[0] == 'testserver':
             loopback.add('testserver')
+        hosted = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip().lower()
+        if hosted and host.hostname == hosted and origin.scheme == 'https' and origin.hostname == hosted \
+                and origin.port in (None, 443) and host.port in (None, 443) \
+                and not (origin.username or origin.password or origin.path or origin.query or origin.fragment):
+            return True
         host_port = host.port or (443 if host.scheme == 'https' else 80)
         origin_port = origin.port or (443 if origin.scheme == 'https' else 80)
         return bool(host.hostname in loopback and origin.hostname == host.hostname and host_port == server[1] and

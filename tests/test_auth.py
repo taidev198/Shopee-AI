@@ -279,3 +279,15 @@ def test_foreign_action_report_and_ai_job_ids_do_not_leak_through_an_assigned_sh
     assert job.status_code==200,job.text
     app.app.state.seller_ai.executor.shutdown(wait=True)
     assert user.get('/api/seller/ai/jobs/'+job.json()['job_id'],params={'shop_id':assigned['id']}).status_code==404
+
+
+def test_render_hostname_origin_is_accepted_only_for_exact_https_host(monkeypatch):
+    from auth import same_local_origin
+    monkeypatch.setenv('RENDER_EXTERNAL_HOSTNAME', 'shopee-ai.onrender.com')
+    def scope(host, origin):
+        return {'type': 'http', 'scheme': 'http', 'server': ('10.0.0.1', 10000),
+                'headers': [(b'host', host.encode()), (b'origin', origin.encode())]}
+    assert same_local_origin(scope('shopee-ai.onrender.com', 'https://shopee-ai.onrender.com'))
+    assert not same_local_origin(scope('shopee-ai.onrender.com', 'https://evil.example'))
+    assert not same_local_origin(scope('evil.example', 'https://evil.example'))
+    assert not same_local_origin(scope('shopee-ai.onrender.com', 'http://shopee-ai.onrender.com'))

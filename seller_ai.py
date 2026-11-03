@@ -4,10 +4,12 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
+import os
 import re
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from typing import Literal
@@ -21,7 +23,21 @@ from seller_ai_repair import targeted_repair, merge_model_patch, correction_task
 from seller_ai_runtime import generation_schema, response_contract, compact_prompt_facts, parse_model_json, PROMPT_FACT_CONTRACT, live_telemetry, schema_fields, safe_diagnostics, numeric_telemetry, semantic_diagnostics, repair_task
 
 
-OLLAMA_URL = 'http://127.0.0.1:11434'
+def _ollama_endpoint():
+    """OLLAMA_BASE_URL lets a hosted app reach a remote gateway; only https (or loopback) is accepted."""
+    raw = os.environ.get('OLLAMA_BASE_URL', '').strip().rstrip('/')
+    if not raw:
+        return 'http://127.0.0.1:11434'
+    parts = urllib.parse.urlsplit(raw)
+    loopback = parts.hostname in ('127.0.0.1', 'localhost', '::1')
+    if parts.scheme not in ('https', 'http') or not parts.hostname or parts.path not in ('', '/') or parts.query \
+            or parts.username or (parts.scheme == 'http' and not loopback):
+        raise RuntimeError('OLLAMA_BASE_URL phải là https://host (hoặc http://127.0.0.1:port)')
+    return f'{parts.scheme}://{parts.netloc}'
+
+
+OLLAMA_URL = _ollama_endpoint()
+OLLAMA_API_TOKEN = os.environ.get('OLLAMA_API_TOKEN', '').strip()
 OLLAMA_GENERATION_ROUTE = '/api/generate'
 DEFAULT_MODEL = 'qwen3.5:9b'
 PROMPT_VERSION = 18
@@ -83,7 +99,10 @@ def request_ollama(path, payload=None, timeout=3):
                     or name in ('num_ctx','num_predict') and not isinstance(value,int)):
                 raise ValueError('Invalid local generation options')
     body = None if payload is None else json.dumps(payload, ensure_ascii=False, allow_nan=False).encode('utf-8')
-    request = urllib.request.Request(OLLAMA_URL + path, data=body, headers={'Content-Type': 'application/json'},
+    headers = {'Content-Type': 'application/json'}
+    if OLLAMA_API_TOKEN:
+        headers['Authorization'] = 'Bearer ' + OLLAMA_API_TOKEN
+    request = urllib.request.Request(OLLAMA_URL + path, data=body, headers=headers,
                                      method='GET' if body is None else 'POST')
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
     with opener.open(request, timeout=timeout) as response:
@@ -335,7 +354,7 @@ class SellerAIService:
             return {**config, 'available': True, 'error': error}
         except Exception:
             return {**config, 'available': False, 'installed_models': [], 'model_installed': False,
-                    'error': 'Chưa kết nối được Ollama cục bộ tại 127.0.0.1:11434. Mở Ollama rồi thử lại.'}
+                    'error': 'Chưa kết nối được Ollama. Mở Ollama (và tunnel nếu dùng máy từ xa) rồi thử lại.'}
 
     def update_settings(self, payload):
         current = self.settings()
