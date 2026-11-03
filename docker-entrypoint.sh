@@ -3,7 +3,13 @@
 # serve while Litestream replicates every change. Without LITESTREAM_BUCKET the
 # app runs exactly as before (data lives only on the container disk).
 CMD="uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=*"
+# Pasted values often carry a trailing space or newline, which R2 reports as AccessDenied.
+for name in LITESTREAM_BUCKET LITESTREAM_ENDPOINT LITESTREAM_ACCESS_KEY_ID LITESTREAM_SECRET_ACCESS_KEY; do
+  eval "value=\$$name"
+  eval "export $name=\"\$(printf %s \"\$value\" | tr -d '[:space:]')\""
+done
 if [ -n "$LITESTREAM_BUCKET" ] && [ -n "$LITESTREAM_ENDPOINT" ]; then
+  echo "Litestream: bucket=$LITESTREAM_BUCKET endpoint=$LITESTREAM_ENDPOINT access_key_len=${#LITESTREAM_ACCESS_KEY_ID} (can 32) secret_len=${#LITESTREAM_SECRET_ACCESS_KEY} (can 64)" >&2
   mkdir -p "$(dirname "$MARKET_DB")"
   if litestream restore -config /app/litestream.yml -if-db-not-exists -if-replica-exists "$MARKET_DB"; then
     exec litestream replicate -config /app/litestream.yml -exec "$CMD"
