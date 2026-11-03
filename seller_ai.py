@@ -37,6 +37,19 @@ def _ollama_endpoint():
 
 
 OLLAMA_URL = _ollama_endpoint()
+
+
+def _ollama_is_local():
+    return urllib.parse.urlsplit(OLLAMA_URL).hostname in ('127.0.0.1', 'localhost', '::1')
+
+
+def _remote_memory_bytes():
+    """The web host's RAM says nothing about a remote Ollama machine; use OLLAMA_HOST_RAM_GB (default 16)."""
+    try:
+        gib = float(os.environ.get('OLLAMA_HOST_RAM_GB', '16'))
+    except ValueError:
+        gib = 16.0
+    return int(max(1.0, gib) * 1024 ** 3)
 OLLAMA_API_TOKEN = os.environ.get('OLLAMA_API_TOKEN', '').strip()
 OLLAMA_GENERATION_ROUTE = '/api/generate'
 DEFAULT_MODEL = 'qwen3.5:9b'
@@ -285,7 +298,7 @@ class SellerAIService:
         self.db = db
         self.snapshot = snapshot
         self.transport = transport or request_ollama
-        self.memory_bytes = physical_memory_bytes
+        self.memory_bytes = physical_memory_bytes if _ollama_is_local() else _remote_memory_bytes
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='marketlens-ollama')
         with db() as c:
             c.executescript('''
