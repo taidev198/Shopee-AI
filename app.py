@@ -1232,6 +1232,11 @@ def finish_product_details(job_id: str, payload: FinishProductDetails):
         if partial:
             note = (f'Đã lưu danh sách {job["rows_imported"]} sản phẩm và chi tiết '
                     f'{job["detail_completed"]}/{job["detail_total"]}; {job["detail_failed"]} lỗi.')
+            top = c.execute('''SELECT error,COUNT(*) n FROM crawl_job_products
+                WHERE job_id=? AND status='failed' AND error<>'' GROUP BY error ORDER BY n DESC LIMIT 1''',
+                (job_id,)).fetchone()
+            if top:
+                note += f' Lỗi phổ biến ({top["n"]} sản phẩm): {top["error"][:200]}'
             if error:
                 note += ' ' + error
         c.execute('''UPDATE crawl_jobs SET status='done',error=?,completed_at=?,result_token=''
