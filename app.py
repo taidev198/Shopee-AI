@@ -40,7 +40,17 @@ DB = Path(os.environ.get('MARKET_DB', str(ROOT / 'market.db')))
 BROWSER_PROFILE = DB.parent / '.browser-profile'
 DB.parent.mkdir(parents=True, exist_ok=True)
 import db_backup
-BACKUP_RESTORE = db_backup.restore_if_missing(DB)  # must precede setup(): a fresh container starts from the last upload
+import pgcompat
+# DATABASE_URL (Neon / any PostgreSQL) is the primary database. Without it the app keeps using the
+# local SQLite file (optionally mirrored by db_backup). MARKETLENS_TEST_PG_URL runs the test-suite on
+# PostgreSQL with one isolated schema per MARKET_DB path.
+_TEST_PG = os.environ.get('MARKETLENS_TEST_PG_URL', '').strip()
+PG_URL = _TEST_PG or next((''.join(os.environ[n].split()) for n in ('DATABASE_URL', 'BACKUP_NEON_URL')
+                           if pgcompat.is_postgres_url(os.environ.get(n, ''))), '')
+if PG_URL:
+    BACKUP_RESTORE = 'postgres'  # data already lives in PostgreSQL: no file restore or mirror
+else:
+    BACKUP_RESTORE = db_backup.restore_if_missing(DB)  # must precede setup(): a fresh container starts from the last upload
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_local_scheduler()
@@ -60,7 +70,7 @@ async def lifespan(app: FastAPI):
     category_thread.start()
     app.state.market_learning.start()
     # After a failed restore the empty file must never overwrite the good remote copy.
-    backup = db_backup.BackupLoop(DB) if BACKUP_RESTORE not in ('error', 'corrupt') else None
+    backup = db_backup.BackupLoop(DB) if BACKUP_RESTORE not in ('error', 'corrupt', 'postgres') else None
     if backup is not None:
         backup.start()
     try:
@@ -80,11 +90,15 @@ app = FastAPI(title='Market Intelligence', version='0.1.0', description='Shop an
 app.mount('/static', StaticFiles(directory=str(ROOT / 'static')), name='static')
 
 
-def db():
+def _sqlite_db():
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA foreign_keys=ON')
     return conn
+
+
+db = pgcompat.connect_factory(PG_URL, pgcompat.schema_for(DB) if _TEST_PG else None, pooled=not _TEST_PG) \
+    if PG_URL else _sqlite_db
 
 
 def setup():
@@ -1340,7 +1354,7 @@ def scheduler_loop():
     # Local single-process MVP only. Use a distributed queue in production.
     while not scheduler_stop.wait(60):
         try: scheduler_tick()
-        except sqlite3.Error: pass
+        except (sqlite3.Error, pgcompat.Error): pass
 
 
 def start_local_scheduler():

@@ -259,29 +259,13 @@ Sản phẩm dùng thông tin đã lưu của SKU. Tối ưu giá cho phép sử
 Gateway (`ollama_gateway.py`) chỉ chuyển tiếp `/api/tags` và `/api/generate`, và yêu cầu Bearer token.
 URL quick tunnel đổi mỗi lần chạy lại; muốn URL cố định hãy dùng named tunnel của Cloudflare. Máy phải bật thì AI mới hoạt động.
 
-## Giữ dữ liệu khi Render deploy lại (sao lưu SQLite lên Neon)
+## Lưu dữ liệu trên Neon Postgres (DB chính)
 
-Gói free của Render xóa đĩa mỗi lần deploy/khởi động lại. App vẫn chạy SQLite; khi khởi động với đĩa trống, nó tải bản sao lưu mới nhất từ Neon Postgres. Khi DB có thay đổi, cứ 5 phút (và khi tắt) app tải một bản chụp nén lên Neon, giữ 2 bản gần nhất.
+Đặt biến môi trường `DATABASE_URL` = connection string của Neon (`postgresql://…?sslmode=require`, lấy ở nút **Connect**). Khi có biến này, app lưu **toàn bộ dữ liệu trực tiếp trong Neon** (tài khoản, shop, sản phẩm, job, AI…): không dùng file SQLite, không sao lưu, nên deploy lại trên Render không mất gì. Bảng được tạo tự động ở lần chạy đầu.
 
-1. Neon Console: tạo project (hoặc dùng project có sẵn), vào **Connect**, copy connection string (`postgresql://…?sslmode=require`).
-2. Trên Render → Environment đặt `DATABASE_URL` = chuỗi đó (tên cũ `BACKUP_NEON_URL` vẫn được nhận).
-3. Kiểm tra trước (chỉ nên chạy khi bảng sao lưu còn trống): `DATABASE_URL='…' python db_backup.py --selftest`.
-4. Deploy. Log có "Sao lưu database đã bật (neon)…" rồi "Đã sao lưu database lên kho lưu trữ".
+- Không đặt `DATABASE_URL` → app chạy bằng SQLite cục bộ (`MARKET_DB`) như trước.
+- Nên dùng connection string có `-pooler` khi Neon có nhiều kết nối; app tự giữ pool tối đa 10 kết nối (`PG_POOL_MAX`).
+- Dữ liệu cũ trong SQLite không tự chuyển sang Neon; chạy `python migrate_sqlite_to_postgres.py market.db` nếu cần.
+- Kiểm thử trên Postgres: `MARKETLENS_TEST_PG_URL=postgresql://… pytest` (mỗi test dùng một schema riêng).
+- `pgcompat.py` dịch cú pháp SQLite sang Postgres khi chạy, nên code truy vấn không đổi.
 
-App tự tạo bảng `marketlens_backup`. Nên dùng DB Neon riêng cho sao lưu, không đặt chung với dữ liệu khác. Chưa đặt `DATABASE_URL` (hoặc bộ D1 bên dưới) thì app chạy như cũ và ghi cảnh báo.
-
-### Hoặc dùng Cloudflare D1 làm nơi sao lưu
-
-App vẫn chạy SQLite; D1 chỉ chứa bản chụp (nén, chia phần ~512 KB). Đặt trên Render (không đặt cùng lúc với `DATABASE_URL`, vì Neon được ưu tiên):
-
-- `BACKUP_D1_ACCOUNT_ID`: Account ID của Cloudflare
-- `BACKUP_D1_DATABASE_ID`: ID của database D1 (UUID)
-- `BACKUP_D1_API_TOKEN`: API token tạo ở My Profile → API Tokens, quyền **Account → D1 → Edit**
-
-Kiểm tra trước khi deploy (đặt 3 biến vào terminal rồi chạy; chỉ nên chạy khi D1 còn trống):
-
-```bash
-python db_backup.py --selftest
-```
-
-D1 giới hạn 100.000 dòng ghi/ngày ở gói free và mỗi lần sao lưu ghi vài dòng, nên app tải lên mỗi 3 phút khi có thay đổi. DB lớn hàng trăm MB nên dùng Neon.

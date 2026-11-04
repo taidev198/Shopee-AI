@@ -214,7 +214,7 @@ def test_training_failure_preserves_previous_model_and_product_checkpoints(works
     assert client.get('/api/category-market/analysis').json()['model']['model_id'] == before
     with app.db() as c:
         assert c.execute('SELECT COUNT(*) FROM market_snapshots').fetchone()[0] == 20
-        assert c.execute('SELECT COUNT(*) FROM market_queue WHERE status="done"').fetchone()[0] == 20
+        assert c.execute("SELECT COUNT(*) FROM market_queue WHERE status='done'").fetchone()[0] == 20
 
 
 def test_model_candidates_are_selected_from_all_products_not_only_sales_top_list(workspace, monkeypatch):
