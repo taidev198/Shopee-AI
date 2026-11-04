@@ -64,6 +64,70 @@
     element.dispatchEvent(new Event('change', {bubbles: true}));
     element.dispatchEvent(new Event('blur', {bubbles: true}));
   }
+  // Shopee renders each section (Thông tin bán hàng, Vận chuyển…) only after its tab is opened or scrolled to,
+  // so open every tab once, then return to the first.
+  async function revealSections() {
+    const tabs = [...document.querySelectorAll('[role=tab], [class*="tab"] li, [class*="tabs"] > *, [class*="anchor"] *')]
+      .filter(el => visible(el) && el.children.length <= 1 && /^(thong tin (chi tiet|ban hang|khac)|mo ta|van chuyen|basic|specification|sales|shipping)/.test(fold(el.innerText).trim()));
+    const seen = new Set();
+    for (const tab of tabs) {
+      const key = fold(tab.innerText).trim();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tab.click();
+      await pause(700);
+    }
+    const first = document.querySelector('[role=tab]');
+    if (first) first.click();
+    await pause(300);
+  }
+  // Heuristics for inputs whose label sits in a neighbouring element (price has a "đ" prefix, weight a "gr" suffix).
+  function nearText(element) {
+    let node = element.parentElement;
+    for (let depth = 0; node && depth < 3; depth++, node = node.parentElement) {
+      if (node.querySelectorAll(SELECTOR).length > 1) break;
+      const text = fold(node.innerText).replace(/\s+/g, ' ').trim();
+      if (text) return text;
+    }
+    return '';
+  }
+  function guessNumeric(list, key, used) {
+    const free = list.filter(item => item.kind === 'input' && !used.has(item.element));
+    if (key === 'price') return free.find(item => /^d$|^d\s|\sd$/.test(nearText(item.element)))?.element || null;
+    if (key === 'weight') return free.find(item => /\bgr?\b|\bg$|\bkg\b/.test(nearText(item.element)))?.element || null;
+    return null;
+  }
+  // Dropdown fields (Thương hiệu, Xuất xứ…): open the select under the label, then click the matching option.
+  async function chooseOption(labelPattern, value, report, label) {
+    const labelEl = [...document.querySelectorAll('div, span, label, p')]
+      .filter(el => visible(el) && el.children.length <= 2).find(el => {
+        const text = fold(el.innerText).replace(/\s+/g, ' ').trim();
+        return text.length < 60 && labelPattern.test(text);
+      });
+    if (!labelEl) return false;
+    let box = null;
+    for (let node = labelEl, depth = 0; node && depth < 4 && !box; node = node.parentElement, depth++) {
+      box = node.querySelector('[class*="select"], [class*="dropdown"], input[readonly]');
+    }
+    if (!box) return false;
+    box.scrollIntoView({block: 'center'});
+    box.click();
+    await pause(500);
+    const wanted = fold(value);
+    const searchBox = [...document.querySelectorAll('input[type=text], input:not([type])')].find(el => visible(el) && /search|tim|nhap/.test(fold(el.placeholder || '')));
+    if (searchBox) { setValue(searchBox, value); await pause(600); }
+    const options = [...document.querySelectorAll('[role=option], [class*="option"], [class*="select-item"], [class*="dropdown"] li, li')]
+      .filter(el => visible(el) && el.children.length <= 3);
+    const match = options.find(el => fold(el.innerText).trim() === wanted) || options.find(el => fold(el.innerText).includes(wanted));
+    if (match) { match.click(); await pause(300); report.filled.push(label); return true; }
+    document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+    document.body.click();
+    return false;
+  }
+  const ATTRIBUTE_FIELDS = [
+    ['thương hiệu', /^\W*thuong hieu/, /^(brand|thuong hieu)$/],
+    ['xuất xứ', /^\W*xuat xu/, /^(country of origin|xuat xu)$/],
+  ];
   async function attachImages(draft, report) {
     const input = [...document.querySelectorAll('input[type=file]')].find(item => /image|png|jpe?g/i.test(item.accept || '')) ||
       document.querySelector('input[type=file]');
@@ -90,14 +154,20 @@
       if (list.length >= 3) break;
       await pause(500);
     }
+    await revealSections();
+    list = controls();
     const used = new Set();
     for (const [key, label, value, kinds] of [
       ['name', 'tên', draft.name, ['input', 'textarea', 'rich']], ['description', 'mô tả', draft.description, ['textarea', 'rich', 'input']],
       ['price', 'giá', draft.price || '', ['input']], ['stock', 'kho hàng', draft.stock || '', ['input']],
       ['weight', 'cân nặng', platform === 'tiktok' ? (draft.weight_g ? draft.weight_g / 1000 : '') : draft.weight_g || '', ['input']]]) {
       if (value === '' || value === 0) continue;
-      const element = pick(list, key, kinds, used) || guess(list, key, used);
+      const element = pick(list, key, kinds, used) || guess(list, key, used) || guessNumeric(list, key, used);
       if (element) { used.add(element); setValue(element, value); report.filled.push(label); await pause(150); } else report.missing.push(label);
+    }
+    for (const [label, pattern, nameMatch] of ATTRIBUTE_FIELDS) {
+      const attribute = draft.attributes.find(item => nameMatch.test(fold(item.name).trim()));
+      if (attribute?.value && !(await chooseOption(pattern, attribute.value, report, label))) report.missing.push(`${label} (chọn trong danh sách)`);
     }
     if (draft.variants.length) report.notes.push('Phân loại hàng: tự thêm theo bảng bên dưới (Shopee kiểm tra chặt phần này).');
     if (draft.images.length) await attachImages(draft, report);
