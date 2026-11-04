@@ -48,6 +48,7 @@ class DraftCreate(BaseModel):
     shop_id: str
     items: list[SourceRef] = Field(min_length=1, max_length=MAX_DRAFTS_PER_REQUEST)
     markup_pct: float = Field(default=0, ge=-90, le=500)
+    overwrite: bool = False  # refresh the scanned content of drafts that already exist (price/stock/weight/status are kept)
 
 
 class DraftUpdate(BaseModel):
@@ -250,7 +251,7 @@ def install(app, db):
     @router.post('/drafts')
     def create_drafts(payload: DraftCreate):
         now = datetime.now().isoformat()
-        created, skipped = [], []
+        created, skipped, updated = [], [], []
         with db() as c:
             require_shop(c, payload.shop_id)
             for item in payload.items:
@@ -260,6 +261,23 @@ def install(app, db):
                     continue
                 existing = c.execute('SELECT id FROM listing_drafts WHERE shop_id=? AND source_role=? AND source_shop=? AND source_sku=?',
                                      (payload.shop_id, 'market', observation['source_shop'], item.sku)).fetchone()
+                if existing and payload.overwrite:
+                    detail = detail_for(c, payload.shop_id, observation['source_shop'], item.sku)
+                    if not detail:
+                        skipped.append({'sku': item.sku, 'reason': 'Chưa có chi tiết mới để ghi đè.', 'draft_id': existing['id']})
+                        continue
+                    categories = detail.get('categories') or []
+                    c.execute('''UPDATE listing_drafts SET source_url=?,name=?,description=?,category=?,images_json=?,attributes_json=?,
+                        variants_json=?,desc_images_json=?,updated_at=? WHERE id=? AND shop_id=?''',
+                              (observation['product_url'] or detail.get('url') or '',
+                               (detail.get('name') or observation['name'])[:120], str(detail.get('description') or '')[:5000],
+                               ' > '.join(str(value) for value in categories) or (observation['category'] or ''),
+                               json.dumps(_clean_images(detail.get('images'))),
+                               json.dumps(_clean_pairs(detail.get('attributes'), ('name', 'value'))),
+                               json.dumps(_clean_variants(detail.get('variants'))),
+                               json.dumps(_clean_images(detail.get('description_images'))), now, existing['id'], payload.shop_id))
+                    updated.append(existing['id'])
+                    continue
                 if existing:
                     skipped.append({'sku': item.sku, 'reason': 'Đã có bản nháp.', 'draft_id': existing['id']})
                     continue
@@ -282,7 +300,7 @@ def install(app, db):
                            json.dumps(_clean_images(detail.get('description_images'))), 'draft', now, now))
                 created.append(draft_id)
             rows = [draft_dict(c.execute('SELECT * FROM listing_drafts WHERE id=?', (draft_id,)).fetchone()) for draft_id in created]
-        return {'created': rows, 'skipped': skipped}
+        return {'created': rows, 'skipped': skipped, 'updated': len(updated)}
 
     @router.post('/drafts/bulk')
     def bulk_update(payload: BulkUpdate):

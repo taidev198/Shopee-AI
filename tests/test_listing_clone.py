@@ -170,3 +170,20 @@ def test_delete_sources_removes_scan_data_but_keeps_drafts_and_user_scoping(clon
     assert result.json() == {'deleted': 1}
     assert client.get('/api/listings/sources', params={'shop_id': shop['id']}).json() == []
     assert len(client.get('/api/listings/drafts', params={'shop_id': shop['id']}).json()) == 1
+
+
+def test_overwrite_refreshes_scanned_content_but_keeps_seller_edits(clone):
+    auth_app, client, shop = clone
+    draft = create(client, shop['id']).json()['created'][0]
+    client.put(f"/api/listings/drafts/{draft['id']}", params={'shop_id': shop['id']}, json={'price': 123456, 'stock': 7, 'name': 'Tên tự sửa'})
+    with auth_app.db() as c:
+        row = c.execute("SELECT detail_json FROM product_details WHERE sku='55.1'").fetchone()
+        detail = json.loads(row['detail_json']); detail['name'] = 'Tên mới từ Shopee'; detail['variants'] = [{'name': 'Màu', 'options': ['Vàng']}]
+        c.execute("UPDATE product_details SET detail_json=? WHERE sku='55.1'", (json.dumps(detail),))
+    plain = create(client, shop['id']).json()
+    assert plain['created'] == [] and plain['updated'] == 0
+    result = create(client, shop['id'], overwrite=True).json()
+    assert result['updated'] == 1 and result['created'] == []
+    fresh = client.get('/api/listings/drafts', params={'shop_id': shop['id']}).json()[0]
+    assert fresh['name'] == 'Tên mới từ Shopee' and fresh['variants'] == [{'name': 'Màu', 'options': ['Vàng']}]
+    assert fresh['price'] == 123456 and fresh['stock'] == 7

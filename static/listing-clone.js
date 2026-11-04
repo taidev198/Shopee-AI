@@ -2,7 +2,7 @@
 // "Sao chép sản phẩm": choose products collected from other shops, edit drafts, then export a
 // Mass Upload spreadsheet or hand the draft to the Chrome extension for the user's Seller Centre.
 (() => {
-  const state = {shopId: null, sources: [], drafts: [], selected: new Set(), q: '', markup: 0, loading: false, error: '', message: '', busy: false, scheduled: false, page: 1, pageSize: 10, draftSel: new Set(), bulk: {}, bulkOpen: false};
+  const state = {shopId: null, sources: [], drafts: [], selected: new Set(), q: '', markup: 0, loading: false, error: '', message: '', busy: false, scheduled: false, page: 1, pageSize: 10, draftSel: new Set(), bulk: {}, bulkOpen: false, overwrite: false, autoRefresh: true};
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]));
   const list = value => Array.isArray(value) ? value : [];
   const money = value => value == null ? '—' : new Intl.NumberFormat('vi-VN').format(value) + '₫';
@@ -33,7 +33,8 @@
       <div class="lc-row"><input type="url" name="target_url" required placeholder="https://shopee.vn/ten_shop" style="flex:1;min-width:240px">
       <input type="hidden" name="role" value="market"><input type="hidden" name="browser_mode" value="chrome"><input type="hidden" name="detail_limit" value="1000">
       <button type="submit" class="btn btn-primary" ${!allowed || busy ? 'disabled' : ''}>${busy ? 'Đang quét...' : '◉ Quét toàn bộ sản phẩm →'}</button></div>
-      <label class="check-control"><input type="checkbox" name="read_details" checked> <span>Đọc chi tiết từng sản phẩm (cần để có ảnh và mô tả)</span></label></form>
+      <label class="check-control"><input type="checkbox" name="read_details" checked> <span>Đọc chi tiết từng sản phẩm (cần để có ảnh và mô tả)</span></label>
+      <label class="check-control"><input type="checkbox" data-lc-autorefresh ${state.autoRefresh ? 'checked' : ''}> <span>Quét xong tự ghi đè nội dung mới vào các bản nháp đã có (giữ giá, kho, cân nặng, trạng thái)</span></label></form>
       <div class="crawl-progress"><p id="crawlFeedback" role="status" aria-live="polite">${esc(run?.message || '')}</p><progress id="crawlDetailProgress" class="${run?.detailPhase ? '' : 'hidden'}" max="${Math.max(1, run?.total || 1)}" value="${(run?.completed || 0) + (run?.failed || 0)}" aria-label="Tiến độ đọc chi tiết sản phẩm"></progress><button type="button" id="stopCrawlDetails" class="btn btn-soft btn-sm ${busy && run?.detailPhase ? '' : 'hidden'}" ${run?.stopRequested ? 'disabled' : ''}>${run?.stopRequested ? 'Đang dừng sau sản phẩm hiện tại...' : 'Dừng sau sản phẩm hiện tại'}</button></div></section>`;
   }
 
@@ -49,17 +50,18 @@
   }
 
   function sourceTable() {
-    const rows = state.sources.map(item => `<tr><td><input type="checkbox" data-lc-pick="${esc(key(item))}" ${state.selected.has(key(item)) ? 'checked' : ''} ${item.draft_id ? 'disabled' : ''} aria-label="Chọn ${esc(item.name)}"></td>
+    const rows = state.sources.map(item => `<tr><td><input type="checkbox" data-lc-pick="${esc(key(item))}" ${state.selected.has(key(item)) ? 'checked' : ''} aria-label="Chọn ${esc(item.name)}"></td>
       <td class="product-name">${esc(item.name)}</td><td>${esc(item.source_shop)}</td><td>${money(item.price)}</td>
       <td>${coverage(item)}</td></tr>`).join('');
     return `<section class="panel"><div class="panel-head"><div><h3>2. Chọn sản phẩm để sao chép</h3>
       <p class="panel-sub">Danh sách gồm sản phẩm đã quét ở bước 1 (hoặc ở mục Thu thập shop với loại dữ liệu “Đối thủ / thị trường”).</p></div></div>
-      <div class="lc-row"><button type="button" class="btn btn-soft btn-sm" data-lc-all="1">Chọn tất cả</button><button type="button" class="btn btn-soft btn-sm" data-lc-all="0">Bỏ chọn tất cả</button><button type="button" class="btn btn-white btn-sm" data-lc-sdelete="1" ${state.selected.size && !state.busy ? '' : 'disabled'}>Xóa ${state.selected.size} sản phẩm đã chọn</button><small>${state.sources.filter(item => !item.draft_id).length} sản phẩm chưa có bản nháp</small></div>
+      <div class="lc-row"><button type="button" class="btn btn-soft btn-sm" data-lc-all="1">Chọn tất cả</button><button type="button" class="btn btn-soft btn-sm" data-lc-all="0">Bỏ chọn tất cả</button><button type="button" class="btn btn-white btn-sm" data-lc-sdelete="1" ${state.selected.size && !state.busy ? '' : 'disabled'}>Xóa ${state.selected.size} sản phẩm đã chọn</button><small>${state.sources.filter(item => !item.draft_id).length} chưa có bản nháp · ${state.sources.filter(item => item.draft_id).length} đã có</small></div>
       <form data-lc-search class="lc-row"><input type="search" name="q" value="${esc(state.q)}" placeholder="Tìm theo tên sản phẩm hoặc shop"><button class="btn btn-soft btn-sm" type="submit">Tìm</button></form>
       ${rows ? `<div class="table-wrap"><table class="data-table"><thead><tr><th></th><th>SẢN PHẨM</th><th>SHOP GỐC</th><th>GIÁ</th><th>DỮ LIỆU</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : '<div class="instructions">Chưa có sản phẩm của shop khác. Dán link shop ở bước 1 và quét trước.</div>'}
       <div class="lc-row"><label>Chỉnh giá bán <input type="number" data-lc-markup value="${esc(state.markup)}" min="-90" max="500" step="1" style="width:5rem">% so với giá gốc</label>
-      <button class="btn btn-primary btn-sm" data-lc-create ${state.selected.size && !state.busy ? '' : 'disabled'}>Tạo bản nháp (${state.selected.size})</button></div></section>`;
+      <label class="check-control"><input type="checkbox" data-lc-overwrite ${state.overwrite ? 'checked' : ''}> <span>Ghi đè nội dung quét mới (tên, mô tả, ảnh, thuộc tính, phân loại) vào bản nháp đã có; giữ nguyên giá, kho, cân nặng, trạng thái</span></label>
+      <button class="btn btn-primary btn-sm" data-lc-create ${state.selected.size && !state.busy ? '' : 'disabled'}>Tạo / cập nhật bản nháp (${state.selected.size})</button></div></section>`;
   }
 
   function draftCard(draft) {
@@ -172,9 +174,26 @@
     const started = Date.now();
     const timer = setInterval(() => {
       const running = typeof S !== 'undefined' && S.crawlSubmitting;
-      if (!running && Date.now() - started > 1500 || Date.now() - started > 3 * 3600 * 1000) { clearInterval(timer); load(); }
+      if (!running && Date.now() - started > 1500 || Date.now() - started > 3 * 3600 * 1000) {
+        clearInterval(timer);
+        load().then(refreshDrafts);
+      }
     }, 1000);
   });
+  // After a scan finishes, overwrite the content of drafts whose products were just re-read.
+  async function refreshDrafts() {
+    if (!state.autoRefresh || !state.shopId) return;
+    const items = state.sources.filter(item => item.draft_id && item.has_detail).map(item => ({source_shop: item.source_shop, sku: item.sku}));
+    if (!items.length) return;
+    try {
+      let updated = 0;
+      for (let offset = 0; offset < items.length; offset += 50) {
+        updated += (await json('/api/listings/drafts', 'POST', {shop_id: state.shopId, items: items.slice(offset, offset + 50), overwrite: true})).updated || 0;
+      }
+      state.message = `Quét xong: đã ghi đè nội dung mới vào ${updated} bản nháp đã có (giữ nguyên giá, kho, cân nặng, trạng thái).`;
+      await load();
+    } catch (error) { state.error = error.message || 'Chưa cập nhật được bản nháp.'; redraw(); }
+  }
   document.addEventListener('input', event => {
     if (event.target.matches?.('input[data-lc-bulk]')) state.bulk[event.target.dataset.lcBulk] = event.target.value;
   });
@@ -188,6 +207,8 @@
   document.addEventListener('change', event => {
     const target = event.target;
     if (target.matches('[data-lc-pick]')) { target.checked ? state.selected.add(target.dataset.lcPick) : state.selected.delete(target.dataset.lcPick); redraw(); }
+    if (target.matches('[data-lc-autorefresh]')) state.autoRefresh = target.checked;
+    if (target.matches('[data-lc-overwrite]')) state.overwrite = target.checked;
     if (target.matches('[data-lc-markup]')) state.markup = Number(target.value) || 0;
     if (target.matches('[data-lc-dpick]')) { target.checked ? state.draftSel.add(target.dataset.lcDpick) : state.draftSel.delete(target.dataset.lcDpick); redraw(); }
     if (target.matches('[data-lc-pagesize]')) { state.pageSize = Number(target.value) || 10; state.page = 1; redraw(); }
@@ -234,18 +255,18 @@
       if (list(draft.images).length >= 9) { state.error = 'Mỗi sản phẩm tối đa 9 ảnh; bỏ bớt ảnh trước khi thêm.'; redraw(); return; }
       act(() => json(`/api/listings/drafts/${encodeURIComponent(id)}?` + query(), 'PUT', {images: [...list(draft.images), extra]}));
     } else if (d.lcAll !== undefined) {
-      state.selected = d.lcAll === '1' ? new Set(state.sources.filter(item => !item.draft_id).map(key)) : new Set();
+      state.selected = d.lcAll === '1' ? new Set(state.sources.map(key)) : new Set();
       redraw();
     } else if (d.lcCreate !== undefined) {
       const items = state.sources.filter(item => state.selected.has(key(item))).map(item => ({source_shop: item.source_shop, sku: item.sku}));
       act(async () => {
-        let created = 0, skipped = 0;
+        let created = 0, skipped = 0, updated = 0;
         for (let offset = 0; offset < items.length; offset += 50) {  // the API accepts 50 products per request
-          const result = await json('/api/listings/drafts', 'POST', {shop_id: state.shopId, items: items.slice(offset, offset + 50), markup_pct: state.markup});
-          created += list(result.created).length; skipped += list(result.skipped).length;
+          const result = await json('/api/listings/drafts', 'POST', {shop_id: state.shopId, items: items.slice(offset, offset + 50), markup_pct: state.markup, overwrite: !!state.overwrite});
+          created += list(result.created).length; skipped += list(result.skipped).length; updated += result.updated || 0;
         }
         state.selected = new Set();
-        state.message = `Đã tạo ${created} bản nháp` + (skipped ? `, bỏ qua ${skipped} (đã có hoặc không tìm thấy).` : '.');
+        state.message = `Đã tạo ${created} bản nháp` + (updated ? `, cập nhật ${updated} bản đã có` : '') + (skipped ? `, bỏ qua ${skipped} (đã có hoặc không tìm thấy).` : '.');
       });
     } else if (d.lcSave) act(() => save(d.lcSave), 'Đã lưu bản nháp.');
     else if (d.lcStatus) { const [id, status] = d.lcStatus.split(':'); act(async () => { await save(id); await json(`/api/listings/drafts/${encodeURIComponent(id)}?` + query(), 'PUT', {status}); }); }
