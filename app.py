@@ -396,9 +396,9 @@ def create_shop(payload: ShopCreate, request: Request):
         c.execute('BEGIN IMMEDIATE')
         existing = c.execute('SELECT * FROM shops WHERE url=? AND is_demo=0',(url,)).fetchone()
         if existing:
-            if request.state.auth['role'] != 'system' and not c.execute(
-                'SELECT 1 FROM auth_account_shops WHERE account_id=? AND shop_id=?',(request.state.auth['id'],existing['id'])).fetchone():
-                raise HTTPException(403,'Shop này chưa được phân quyền cho tài khoản của bạn.')
+            # A user may add any shop by URL: if it already exists (added by someone else), link it to them.
+            if request.state.auth['role'] != 'system':
+                c.execute('INSERT OR IGNORE INTO auth_account_shops VALUES(?,?)',(request.state.auth['id'],existing['id']))
             return asdict(existing)
         shop_id = str(uuid.uuid4())
         c.execute('INSERT INTO shops VALUES (?,?,?,?,?,?)',

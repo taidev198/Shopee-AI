@@ -151,16 +151,18 @@ def test_signed_mutations_require_csrf_and_same_local_origin(accounts):
     assert system.post('/api/shops',json=body).status_code==200
 
 
-def test_user_can_read_only_assigned_shops_and_cannot_claim_existing_foreign_url(accounts):
+def test_user_reads_only_assigned_shops_and_adding_existing_url_links_it(accounts):
     _,_,user,_,_,assigned,foreign=accounts
     assert [row['id'] for row in user.get('/api/shops').json()]==[assigned['id']]
     assert user.get('/api/dashboard',params={'shop_id':assigned['id']}).status_code==200
     assert user.get('/api/dashboard',params={'shop_id':foreign['id']}).status_code==403
     assert user.get('/api/seller/analysis',params={'shop_id':foreign['id']}).status_code==403
-    assert user.post('/api/shops',json={'url':foreign['url']}).status_code==403
+    claimed=user.post('/api/shops',json={'url':foreign['url']})
+    assert claimed.status_code==200 and claimed.json()['id']==foreign['id']
+    assert user.get('/api/dashboard',params={'shop_id':foreign['id']}).status_code==200
     created=user.post('/api/shops',json={'url':'https://shopee.vn/created_by_user'})
     assert created.status_code==200,created.text
-    assert {row['id'] for row in user.get('/api/shops').json()}=={assigned['id'],created.json()['id']}
+    assert {row['id'] for row in user.get('/api/shops').json()}=={assigned['id'],foreign['id'],created.json()['id']}
     assert user.post('/api/shops',json={'url':created.json()['url']}).json()['id']==created.json()['id']
 
 
