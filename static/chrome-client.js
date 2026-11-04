@@ -48,6 +48,7 @@
     ping: () => request('ping', {}, 1500),
     collect: url => request('collect', {url}, 240000),
     detail: url => request('detail', {url}, 120000),
+    listing: draft => request('listing', {draft}, 30000),
     discover: (query, ownShopUrl) => request('discover', {query, ownShopUrl}, 150000),
   });
 })();

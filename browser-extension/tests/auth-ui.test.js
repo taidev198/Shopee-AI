@@ -18,7 +18,7 @@ function setup({path='/login',search='',handler}={}) {
 
 test('User and System shells have separate canonical role menus while preserving shared application IDs',()=>{
   assert.match(userHtml,/<body data-app-role="user">/);assert.match(systemHtml,/<body data-app-role="system">/);
-  assert.deepEqual([...userHtml.matchAll(/data-view="([^"]+)"/g)].map(match=>match[1]),['crawler','overview','myShops','shopAnalysis','products','optimizer','competitors','marketAnalysis','strategy','actions','reports']);
+  assert.deepEqual([...userHtml.matchAll(/data-view="([^"]+)"/g)].map(match=>match[1]),['crawler','overview','myShops','shopAnalysis','products','optimizer','competitors','marketAnalysis','strategy','actions','listings','reports']);
   assert.deepEqual([...systemHtml.matchAll(/data-view="([^"]+)"/g)].map(match=>match[1]),['crawler','categoryMarket','marketSchedules','imports','users']);
   for(const html of [userHtml,systemHtml]){
     for(const id of ['navigation','shopSelect','shopUrl','dataBadge','shopModal','shopForm','importShortcut','refreshButton','newShopButton','closeShopModal','cancelShop','viewContainer','pageTitle','mainHeading','demoWarning','toast','logoutButton','authAccountName','authRoleBadge'])assert.equal((html.match(new RegExp(`id="${id}"`,'g'))||[]).length,1,id);

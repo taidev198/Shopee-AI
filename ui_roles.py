@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 
 USER_VIEWS = frozenset(('overview', 'myShops', 'shopAnalysis', 'products', 'optimizer',
-                        'competitors', 'marketAnalysis', 'opportunities', 'strategy', 'actions', 'reports'))
+                        'competitors', 'marketAnalysis', 'opportunities', 'strategy', 'actions', 'reports', 'listings'))
 SHARED_VIEWS = frozenset(('crawler',))  # shop collection: both User and System workspaces
 SYSTEM_VIEWS = frozenset(('categoryMarket', 'marketSchedules', 'imports', 'users'))
 

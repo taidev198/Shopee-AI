@@ -1,0 +1,140 @@
+'use strict';
+// "Sao chép sản phẩm": choose products collected from other shops, edit drafts, then export a
+// Mass Upload spreadsheet or hand the draft to the Chrome extension for the user's Seller Centre.
+(() => {
+  const state = {shopId: null, sources: [], drafts: [], selected: new Set(), q: '', markup: 0, loading: false, error: '', message: '', busy: false, scheduled: false};
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]));
+  const list = value => Array.isArray(value) ? value : [];
+  const money = value => value == null ? '—' : new Intl.NumberFormat('vi-VN').format(value) + '₫';
+  const redraw = () => { if (typeof S !== 'undefined' && S.view === 'listings' && typeof render === 'function') render(); };
+  const json = (path, method, body) => api(path, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const query = extra => new URLSearchParams({shop_id: state.shopId, ...extra});
+  const key = item => item.source_shop + '\u0000' + item.sku;
+
+  async function load() {
+    const shopId = state.shopId;
+    state.loading = true; state.error = ''; redraw();
+    try {
+      const [sources, drafts] = await Promise.all([api('/api/listings/sources?' + query({q: state.q})), api('/api/listings/drafts?' + query())]);
+      if (shopId !== state.shopId) return;
+      state.sources = list(sources); state.drafts = list(drafts);
+    } catch (error) { state.error = error.message || 'Chưa tải được dữ liệu.'; }
+    finally { if (shopId === state.shopId) { state.loading = false; redraw(); } }
+  }
+
+  function sourceTable() {
+    const rows = state.sources.map(item => `<tr><td><input type="checkbox" data-lc-pick="${esc(key(item))}" ${state.selected.has(key(item)) ? 'checked' : ''} ${item.draft_id ? 'disabled' : ''} aria-label="Chọn ${esc(item.name)}"></td>
+      <td class="product-name">${esc(item.name)}</td><td>${esc(item.source_shop)}</td><td>${money(item.price)}</td>
+      <td>${item.draft_id ? '<span class="badge">Đã có bản nháp</span>' : item.has_detail ? '<span class="badge">Đủ ảnh &amp; mô tả</span>' : '<span class="badge">Thiếu chi tiết</span>'}</td></tr>`).join('');
+    return `<section class="panel"><div class="panel-head"><div><h3>1. Chọn sản phẩm của shop khác</h3>
+      <p class="panel-sub">Lấy từ dữ liệu đã thu thập ở mục Thu thập shop. Bật “Đọc chi tiết từng sản phẩm” khi thu thập để có đủ ảnh và mô tả.</p></div></div>
+      <form data-lc-search class="lc-row"><input type="search" name="q" value="${esc(state.q)}" placeholder="Tìm theo tên sản phẩm hoặc shop"><button class="btn btn-soft btn-sm" type="submit">Tìm</button></form>
+      ${rows ? `<div class="table-wrap"><table class="data-table"><thead><tr><th></th><th>SẢN PHẨM</th><th>SHOP GỐC</th><th>GIÁ</th><th>DỮ LIỆU</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : '<div class="instructions">Chưa có sản phẩm của shop khác. Vào Thu thập shop, nhập URL shop đối thủ và quét trước.</div>'}
+      <div class="lc-row"><label>Chỉnh giá bán <input type="number" data-lc-markup value="${esc(state.markup)}" min="-90" max="500" step="1" style="width:5rem">% so với giá gốc</label>
+      <button class="btn btn-primary btn-sm" data-lc-create ${state.selected.size && !state.busy ? '' : 'disabled'}>Tạo bản nháp (${state.selected.size})</button></div></section>`;
+  }
+
+  function draftCard(draft) {
+    const images = list(draft.images).map((url, index) => `<span class="lc-img"><img src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer"><button type="button" data-lc-img="${esc(draft.id)}:${index}" title="Bỏ ảnh">×</button></span>`).join('');
+    const variants = list(draft.variants).map(item => `${esc(item.name)}: ${esc(list(item.options).join(', '))}`).join(' · ');
+    const attributes = list(draft.attributes).map(item => `${esc(item.name)}: ${esc(item.value)}`).join(' · ');
+    return `<article class="panel lc-draft" data-lc-draft="${esc(draft.id)}"><div class="lc-row"><strong>${draft.status === 'ready' ? '✅ Sẵn sàng' : draft.status === 'posted' ? '📦 Đã đăng' : '✎ Nháp'}</strong>
+      <small>Gốc: ${esc(draft.source_shop)} · <a href="${esc(draft.source_url)}" target="_blank" rel="noopener noreferrer">xem sản phẩm</a></small></div>
+      <label>Tên sản phẩm <input data-lc-field="name" maxlength="120" value="${esc(draft.name)}"></label>
+      <div class="lc-row"><label>Giá (₫) <input type="number" data-lc-field="price" min="0" value="${esc(draft.price ?? '')}"></label>
+        <label>Kho hàng <input type="number" data-lc-field="stock" min="0" value="${esc(draft.stock)}"></label>
+        <label>Cân nặng (g) <input type="number" data-lc-field="weight_g" min="0" value="${esc(draft.weight_g)}"></label></div>
+      <label>Ngành hàng <input data-lc-field="category" value="${esc(draft.category)}"></label>
+      <label>Mô tả <textarea data-lc-field="description" rows="5" maxlength="5000">${esc(draft.description)}</textarea></label>
+      <div class="lc-images">${images || '<small>Chưa có ảnh (sản phẩm này chưa đọc chi tiết).</small>'}</div>
+      ${attributes ? `<p class="muted"><b>Thuộc tính:</b> ${attributes}</p>` : ''}${variants ? `<p class="muted"><b>Phân loại:</b> ${variants}</p>` : ''}
+      <div class="lc-row"><button class="btn btn-soft btn-sm" data-lc-save="${esc(draft.id)}">Lưu</button>
+        <button class="btn btn-soft btn-sm" data-lc-status="${esc(draft.id)}:${draft.status === 'ready' ? 'draft' : 'ready'}">${draft.status === 'ready' ? 'Bỏ đánh dấu' : 'Đánh dấu sẵn sàng'}</button>
+        <button class="btn btn-primary btn-sm" data-lc-post="${esc(draft.id)}">Đăng bằng tiện ích Chrome</button>
+        <button class="btn btn-white btn-sm" data-lc-delete="${esc(draft.id)}">Xóa</button></div></article>`;
+  }
+
+  function draftsSection() {
+    const ready = state.drafts.filter(item => item.status === 'ready').length;
+    return `<section class="panel"><div class="panel-head"><div><h3>2. Bản nháp đăng bán (${state.drafts.length})</h3>
+      <p class="panel-sub">Chỉnh lại tên, giá, mô tả cho phù hợp shop của bạn rồi chọn một cách đăng.</p></div>
+      <div class="lc-row"><a class="btn btn-soft btn-sm ${state.drafts.length ? '' : 'disabled'}" href="/api/listings/export?${esc(query({}).toString())}" data-lc-export>Tải file Mass Upload (.xlsx)</a>
+      ${ready ? `<a class="btn btn-soft btn-sm" href="/api/listings/export?${esc(query({ids: state.drafts.filter(item => item.status === 'ready').map(item => item.id).join(',')}).toString())}">Chỉ ${ready} bản sẵn sàng</a>` : ''}</div></div>
+      ${state.drafts.map(draftCard).join('') || '<div class="instructions">Chưa có bản nháp. Chọn sản phẩm ở bước 1.</div>'}</section>`;
+  }
+
+  function renderListings() {
+    if (!S.shopId) return '<section class="panel"><h2>Chưa có shop</h2><p>Thêm shop của bạn trước khi sao chép sản phẩm.</p></section>';
+    if (state.shopId !== S.shopId) {
+      Object.assign(state, {shopId: S.shopId, sources: [], drafts: [], selected: new Set(), message: '', error: ''});
+      if (!state.scheduled) { state.scheduled = true; setTimeout(() => { state.scheduled = false; load(); }, 0); }
+    }
+    return `<div class="lc-workspace"><section class="panel lc-warning"><span class="eyebrow">SAO CHÉP SẢN PHẨM → KÊNH NGƯỜI BÁN</span>
+      <h2>Đăng sản phẩm từ shop khác lên shop của bạn</h2>
+      <p><b>Lưu ý bản quyền:</b> ảnh và mô tả là nội dung của shop gốc. Shopee có thể gỡ listing hoặc xử lý vi phạm sở hữu trí tuệ nếu shop gốc báo cáo. Bạn chịu trách nhiệm về nội dung đăng; nên đổi ảnh và viết lại mô tả.</p>
+      ${state.message ? `<p class="lc-ok">${esc(state.message)}</p>` : ''}${state.error ? `<p class="lc-err">${esc(state.error)}</p>` : ''}${state.loading ? '<p>Đang tải…</p>' : ''}</section>
+      ${sourceTable()}${draftsSection()}</div>`;
+  }
+
+  async function act(operation, message) {
+    if (state.busy) return;
+    state.busy = true; state.error = ''; state.message = '';
+    try { await operation(); if (message) state.message = message; await load(); }
+    catch (error) { state.error = error.message || 'Thao tác chưa thành công.'; redraw(); }
+    finally { state.busy = false; redraw(); }
+  }
+
+  const draftById = id => state.drafts.find(item => item.id === id);
+  function cardValues(id) {
+    const card = document.querySelector(`[data-lc-draft="${CSS.escape(id)}"]`);
+    const values = {};
+    card?.querySelectorAll('[data-lc-field]').forEach(input => {
+      const name = input.dataset.lcField;
+      values[name] = ['price', 'stock', 'weight_g'].includes(name) ? (input.value === '' ? (name === 'price' ? null : 0) : Number(input.value)) : input.value;
+    });
+    return values;
+  }
+  const save = id => json(`/api/listings/drafts/${encodeURIComponent(id)}?` + query(), 'PUT', cardValues(id));
+
+  document.addEventListener('submit', event => {
+    if (!event.target.matches('[data-lc-search]')) return;
+    event.preventDefault();
+    state.q = new FormData(event.target).get('q') || '';
+    load();
+  });
+  document.addEventListener('change', event => {
+    const target = event.target;
+    if (target.matches('[data-lc-pick]')) { target.checked ? state.selected.add(target.dataset.lcPick) : state.selected.delete(target.dataset.lcPick); redraw(); }
+    if (target.matches('[data-lc-markup]')) state.markup = Number(target.value) || 0;
+  });
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-lc-create],[data-lc-save],[data-lc-status],[data-lc-post],[data-lc-delete],[data-lc-img]');
+    if (!button) return;
+    const d = button.dataset;
+    if (d.lcCreate !== undefined) {
+      const items = state.sources.filter(item => state.selected.has(key(item))).map(item => ({source_shop: item.source_shop, sku: item.sku}));
+      act(async () => {
+        const result = await json('/api/listings/drafts', 'POST', {shop_id: state.shopId, items, markup_pct: state.markup});
+        state.selected = new Set();
+        state.message = `Đã tạo ${list(result.created).length} bản nháp` + (list(result.skipped).length ? `, bỏ qua ${result.skipped.length} (đã có hoặc không tìm thấy).` : '.');
+      });
+    } else if (d.lcSave) act(() => save(d.lcSave), 'Đã lưu bản nháp.');
+    else if (d.lcStatus) { const [id, status] = d.lcStatus.split(':'); act(async () => { await save(id); await json(`/api/listings/drafts/${encodeURIComponent(id)}?` + query(), 'PUT', {status}); }); }
+    else if (d.lcDelete) { if (confirm('Xóa bản nháp này?')) act(() => api(`/api/listings/drafts/${encodeURIComponent(d.lcDelete)}?` + query(), {method: 'DELETE'}), 'Đã xóa bản nháp.'); }
+    else if (d.lcImg) {
+      const [id, index] = d.lcImg.split(':'); const draft = draftById(id);
+      act(() => json(`/api/listings/drafts/${encodeURIComponent(id)}?` + query(), 'PUT', {images: list(draft?.images).filter((_, position) => position !== Number(index))}));
+    } else if (d.lcPost) {
+      act(async () => {
+        if (!window.MarketLensChrome?.listing) throw new Error('Chưa kết nối tiện ích MarketLens. Cài hoặc cập nhật tiện ích (phiên bản 1.4.0 trở lên) rồi tải lại trang.');
+        await save(d.lcPost);
+        const fresh = (await api('/api/listings/drafts?' + query())).find(item => item.id === d.lcPost);
+        await window.MarketLensChrome.listing(fresh);
+        state.message = 'Đã mở Kênh Người Bán. Đăng nhập nếu cần, rồi bấm “Tự điền biểu mẫu” trong khung MarketLens ở góc phải; kiểm tra lại trước khi bấm Đăng.';
+      });
+    }
+  });
+
+  window.MarketLensListings = Object.freeze({render: renderListings});
+})();

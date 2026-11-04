@@ -1403,3 +1403,5 @@ category_schedule_tick = install_category_market(app, db, BrowserProductDetail, 
 
 from seller_workspace import install as install_seller_workspace
 seller_report_tick = install_seller_workspace(app, db, report)
+from listing_clone import install as install_listing_clone
+install_listing_clone(app, db)

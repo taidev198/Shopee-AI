@@ -7,7 +7,7 @@
     if (event.source !== window || event.origin !== window.location.origin) return;
     const message = event.data;
     if (!message || message.source !== 'marketlens-app' ||
-        !['ping', 'collect', 'detail', 'discover', 'categories', 'category'].includes(message.action) ||
+        !['ping', 'collect', 'detail', 'discover', 'categories', 'category', 'listing'].includes(message.action) ||
         typeof message.requestId !== 'string' || !message.requestId ||
         message.requestId.length > 128 || pending.has(message.requestId)) return;
     pending.add(message.requestId);
@@ -16,7 +16,7 @@
       const response = await chrome.runtime.sendMessage({
         source: 'marketlens-bridge', action: message.action,
         requestId: message.requestId, url: message.url,
-        query: message.query, ownShopUrl: message.ownShopUrl,
+        query: message.query, ownShopUrl: message.ownShopUrl, draft: message.draft,
       });
       if (!response || typeof response.ok !== 'boolean') {
         throw new Error('Tiện ích không trả kết quả. Hãy tải lại tiện ích và trang MarketLens.');

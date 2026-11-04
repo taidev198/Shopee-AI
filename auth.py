@@ -420,6 +420,10 @@ def user_permission(path, method):
         return 'job' if method == 'GET' else None
     if re.fullmatch(r'/api/crawl/jobs/[^/]+/(?:browser-result|product-result|finish-details)', path):
         return 'job' if method == 'POST' else None
+    if path in ('/api/listings/sources', '/api/listings/drafts', '/api/listings/export'):
+        return 'shop' if method == 'GET' or (path == '/api/listings/drafts' and method == 'POST') else None
+    if re.fullmatch(r'/api/listings/drafts/[^/]+', path):
+        return 'shop' if method in ('PUT', 'DELETE') else None
     if path in ('/api/dashboard', '/api/export/opportunities', '/api/seller/analysis', '/api/seller/ai/shop'):
         return 'shop' if method == 'GET' else None
     if path in ('/api/seller/optimize', '/api/seller/actions', '/api/seller/reports', '/api/seller/ai/generate', '/api/seller/ai/shop-generate'):
@@ -441,6 +445,9 @@ AUDIT_LABELS = (
     ('PATCH', r'/api/auth/accounts/[^/]+', 'Khóa/mở User'),
     ('DELETE', r'/api/auth/accounts/[^/]+', 'Khóa User'),
     ('POST', r'/api/shops', 'Thêm shop'),
+    ('POST', r'/api/listings/drafts', 'Sao chép sản phẩm thành bản nháp đăng bán'),
+    ('PUT', r'/api/listings/drafts/[^/]+', 'Sửa bản nháp đăng bán'),
+    ('DELETE', r'/api/listings/drafts/[^/]+', 'Xóa bản nháp đăng bán'),
     ('POST', r'/api/crawl/jobs', 'Bắt đầu thu thập shop'),
     ('POST', r'/api/crawl/jobs/[^/]+/finish-details', 'Hoàn tất đọc chi tiết sản phẩm'),
     ('POST', r'/api/crawl/schedules', 'Đặt lịch thu thập'),

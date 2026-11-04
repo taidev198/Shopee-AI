@@ -274,3 +274,13 @@ URL quick tunnel đổi mỗi lần chạy lại; muốn URL cố định hãy d
 - Kiểm thử trên Postgres: `MARKETLENS_TEST_PG_URL=postgresql://… pytest` (mỗi test dùng một schema riêng).
 - `pgcompat.py` dịch cú pháp SQLite sang Postgres khi chạy, nên code truy vấn không đổi.
 
+
+
+## Sao chép sản phẩm sang Kênh Người Bán
+
+Menu **Sao chép sản phẩm** (site User) lấy sản phẩm của shop khác đã thu thập (có ảnh, mô tả, thuộc tính, phân loại nếu đã bật “Đọc chi tiết từng sản phẩm”), tạo bản nháp để chỉnh, rồi đăng theo hai cách:
+
+1. **Tải file Mass Upload (.xlsx)** – bảng dữ liệu để sao chép vào mẫu Đăng hàng loạt của Shopee theo ngành hàng (Kênh Người Bán > Sản phẩm > Thêm nhiều sản phẩm).
+2. **Đăng bằng tiện ích Chrome** (tiện ích ≥ 1.4.0) – mở `banhang.shopee.vn/portal/product/new`, hiện khung MarketLens để tự điền tên, mô tả, giá, kho, cân nặng và tải ảnh. Tiện ích không tự bấm Đăng; người bán kiểm tra rồi tự đăng. Giao diện Kênh Người Bán do Shopee đổi thường xuyên nên ô nào không nhận ra sẽ được báo để dán bằng nút Sao chép.
+
+Ảnh và mô tả thuộc về shop gốc: chỉ đăng khi bạn có quyền sử dụng.

@@ -1,6 +1,7 @@
 import {validateCategoryUrl, inspectCategoryPage} from './category.js';
 import {inspectShopPage, isAllowedAppUrl, validateShopUrl} from './collector.js';
 import {inspectProductPage, validateProductUrl} from './product-detail.js';
+import {validateListingDraft, SELLER_NEW_PRODUCT_URL, IMAGE_URL, MAX_IMAGE_BYTES} from './listing.js';
 import {inspectSearchPage, inspectProductSeller, inspectShopProfile, validateDiscoveryQuery, validateSellerLink} from './discovery.js';
 
 const MAX_PAGES = 5;
@@ -484,15 +485,21 @@ async function collectCategory(url, sender, home = false) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.source === 'marketlens-seller') return handleSellerMessage(message, sender, sendResponse);
   if (sender.id !== chrome.runtime.id || sender.frameId !== 0 ||
       !isAllowedAppUrl(sender.url) || message?.source !== 'marketlens-bridge') return false;
-  if (!['ping', 'collect', 'detail', 'discover', 'categories', 'category'].includes(message.action) || typeof message.requestId !== 'string' || message.requestId.length > 128) {
+  if (!['ping', 'collect', 'detail', 'discover', 'categories', 'category', 'listing'].includes(message.action) || typeof message.requestId !== 'string' || message.requestId.length > 128) {
     sendResponse({ok: false, error: 'Yêu cầu tiện ích không hợp lệ.'});
     return false;
   }
   if (message.action === 'ping') {
     sendResponse({ok: true, result: {version: chrome.runtime.getManifest().version, maxPages: MAX_PAGES, maxProducts: MAX_PRODUCTS, details: true, capabilities: {discover: true, categories: true, categoryCatalog: true, verificationPause: true, tabEditRetry: true, categoryCardsV2: true, categoryParallel: MAX_PARALLEL_CATEGORY}, mode: 'chrome_dom'}});
     return false;
+  }
+  if (message.action === 'listing') {
+    startListing(message.draft).then(result => sendResponse({ok: true, result}),
+      error => sendResponse({ok: false, error: error.message || String(error)}));
+    return true;
   }
   const task = ['categories', 'category'].includes(message.action) ? collectCategory(message.url, sender, message.action === 'categories') : message.action === 'discover' ? discover(message.query, message.ownShopUrl, sender) :
     (message.action === 'detail' ? collectDetail : collect)(message.url, sender);
@@ -508,3 +515,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }));
   return true;
 });
+
+// --- Seller Centre handoff: the draft waits in session storage until the user's own
+// banhang.shopee.vn tab asks for it; images are fetched here (host permission), not in the page.
+async function startListing(value) {
+  const draft = validateListingDraft(value);
+  await chrome.storage.session.set({listingDraft: draft});
+  await chrome.tabs.create({url: SELLER_NEW_PRODUCT_URL});
+  return {opened: true, images: draft.images.length};
+}
+
+function isSellerCentreUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'banhang.shopee.vn' && url.pathname.startsWith('/portal/product/');
+  } catch { return false; }
+}
+
+function toBase64(bytes) {
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return btoa(binary);
+}
+
+function handleSellerMessage(message, sender, sendResponse) {
+  if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || !isSellerCentreUrl(sender.url)) return false;
+  (async () => {
+    const {listingDraft} = await chrome.storage.session.get('listingDraft');
+    if (message.action === 'draft') return {ok: true, draft: listingDraft || null};
+    if (message.action === 'image') {
+      const url = listingDraft?.images?.[Number(message.index)];
+      if (!url || !IMAGE_URL.test(url)) return {ok: false, error: 'Không có ảnh này trong bản nháp.'};
+      const response = await fetch(url, {credentials: 'omit'});
+      if (!response.ok) return {ok: false, error: `Máy chủ ảnh trả lỗi ${response.status}.`};
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length > MAX_IMAGE_BYTES) return {ok: false, error: 'Ảnh quá lớn.'};
+      const type = (response.headers.get('content-type') || 'image/jpeg').split(';')[0];
+      return {ok: true, type: /^image\/(?:png|jpeg|webp)$/.test(type) ? type : 'image/jpeg', base64: toBase64(bytes)};
+    }
+    return {ok: false, error: 'Yêu cầu không hợp lệ.'};
+  })().then(sendResponse, error => sendResponse({ok: false, error: error.message || String(error)}));
+  return true;
+}
