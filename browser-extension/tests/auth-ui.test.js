@@ -25,7 +25,7 @@ test('User and System shells have separate canonical role menus while preserving
     assert.ok(html.indexOf('/static/auth-client.js')<html.indexOf('/static/app.js'));assert.ok(html.indexOf('/static/role-navigation.js')<html.indexOf('/static/app.js'));
     assert.doesNotMatch(html,/20261016-content-15/);
   }
-  assert.doesNotMatch(userHtml,/id="newShopButton" hidden/);assert.match(userHtml,/id="importShortcut" hidden/);assert.match(userHtml,/href="\/system" data-system-link hidden/);assert.match(systemHtml,/href="\/user"/);
+  assert.doesNotMatch(userHtml,/id="newShopButton" hidden/);assert.match(userHtml,/id="importShortcut" hidden/);assert.doesNotMatch(userHtml,/href="\/system"/);assert.doesNotMatch(systemHtml,/href="\/user"/);
   assert.doesNotMatch(authHtml,/<input[^>]*name="password"[^>]*value=/);assert.doesNotMatch(authHtml,/<input[^>]*name="username"[^>]*value=/);
 });
 
