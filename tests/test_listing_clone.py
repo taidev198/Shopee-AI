@@ -47,7 +47,9 @@ def create(client, shop_id, **extra):
 
 def test_draft_copies_images_description_attributes_and_variants_and_drops_foreign_images(clone):
     _, client, shop = clone
-    assert client.get('/api/listings/sources', params={'shop_id': shop['id']}).json()[0]['has_detail'] is True
+    source = client.get('/api/listings/sources', params={'shop_id': shop['id']}).json()[0]
+    assert source['has_detail'] is True
+    assert source['coverage'] == {'images': 3, 'variants': 2, 'attributes': 1, 'category': True, 'description': True}
     result = create(client, shop['id'], markup_pct=10)
     assert result.status_code == 200, result.text
     draft = result.json()['created'][0]

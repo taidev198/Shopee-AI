@@ -134,6 +134,20 @@ def draft_dict(row):
     return data
 
 
+def _coverage(row):
+    """What a scanned product detail holds, so the UI can show what a draft will have."""
+    empty = {'images': 0, 'variants': 0, 'attributes': 0, 'category': False, 'description': False}
+    if row is None or row['status'] != 'done':
+        return empty
+    try:
+        detail = json.loads(row['detail_json'] or '{}')
+    except ValueError:
+        return empty
+    return {'images': len(detail.get('images') or []), 'variants': len(detail.get('variants') or []),
+            'attributes': len(detail.get('attributes') or []), 'category': bool(detail.get('categories')),
+            'description': bool(str(detail.get('description') or '').strip())}
+
+
 def install(app, db):
     router = APIRouter(prefix='/api/listings')
     with db() as c:
@@ -182,7 +196,7 @@ def install(app, db):
                 latest[(_norm(row['source_shop']), row['sku'])] = row
             details = {}
             for row in c.execute("SELECT * FROM product_details WHERE shop_id=? AND role='market'", (shop_id,)):
-                details[(_norm(row['source_shop']), row['sku'])] = row['status']
+                details[(_norm(row['source_shop']), row['sku'])] = row
             drafted = {(_norm(row['source_shop']), row['source_sku']): row['id'] for row in c.execute(
                 "SELECT id,source_shop,source_sku FROM listing_drafts WHERE shop_id=?", (shop_id,))}
         rows = []
@@ -192,7 +206,8 @@ def install(app, db):
                 continue
             rows.append({'source_shop': row['source_shop'], 'sku': row['sku'], 'name': row['name'], 'price': row['price'],
                          'sold_total': row['sold_total'], 'product_url': row['product_url'],
-                         'has_detail': details.get(key) == 'done', 'draft_id': drafted.get(key)})
+                         'has_detail': bool(details.get(key)) and details[key]['status'] == 'done',
+                         'coverage': _coverage(details.get(key)), 'draft_id': drafted.get(key)})
         rows.sort(key=lambda item: (item['sold_total'] or 0), reverse=True)
         return rows[:limit]
 

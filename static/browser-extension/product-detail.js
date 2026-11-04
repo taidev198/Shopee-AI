@@ -128,6 +128,11 @@ export function inspectProductPage(options) {
       if (detail.attributes.length >= 50) break;
     }
   }
+  if (!detail.categories.length) {  // fallback: the breadcrumb above the title (Shopee > Category > ... > product)
+    const crumbs = [...document.querySelectorAll('nav a, [class*="breadcrumb" i] a')].filter(visible).map(text)
+      .filter(value => value && !/^(?:shopee|trang chu|home)$/.test(label(value)) && value.length <= 200);
+    if (crumbs.length) detail.categories = [...new Set(crumbs)].slice(0, 10);
+  }
   if (!detail.stock_text) {
     detail.stock_text = (text(summary).match(/(?:\b(?:out of stock|in stock|sold out)\b|hết hàng|còn hàng|het hang|con hang)/i)?.[0] || '').slice(0, 200);
   }

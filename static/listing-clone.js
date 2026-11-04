@@ -37,10 +37,21 @@
       <div class="crawl-progress"><p id="crawlFeedback" role="status" aria-live="polite">${esc(run?.message || '')}</p><progress id="crawlDetailProgress" class="${run?.detailPhase ? '' : 'hidden'}" max="${Math.max(1, run?.total || 1)}" value="${(run?.completed || 0) + (run?.failed || 0)}" aria-label="Tiến độ đọc chi tiết sản phẩm"></progress><button type="button" id="stopCrawlDetails" class="btn btn-soft btn-sm ${busy && run?.detailPhase ? '' : 'hidden'}" ${run?.stopRequested ? 'disabled' : ''}>${run?.stopRequested ? 'Đang dừng sau sản phẩm hiện tại...' : 'Dừng sau sản phẩm hiện tại'}</button></div></section>`;
   }
 
+  // What the scan captured for a product: images, variants, category, attributes, description.
+  function coverage(item) {
+    const c = item.coverage || {};
+    const parts = item.has_detail
+      ? [`${c.images || 0} ảnh`, `${c.variants || 0} phân loại`, `${c.attributes || 0} thuộc tính`, c.category ? 'có ngành hàng' : '', c.description ? 'có mô tả' : ''].filter(Boolean)
+      : [];
+    const missing = item.has_detail ? [!c.images && 'ảnh', !c.variants && 'phân loại', !c.category && 'ngành hàng', !c.description && 'mô tả'].filter(Boolean) : [];
+    return `${item.draft_id ? '<span class="badge">Đã có bản nháp</span> ' : ''}` +
+      (item.has_detail ? `<small>${esc(parts.join(' · '))}</small>${missing.length ? `<br><small class="lc-missing">Thiếu: ${esc(missing.join(', '))}</small>` : ''}` : '<span class="badge">Thiếu chi tiết</span>');
+  }
+
   function sourceTable() {
     const rows = state.sources.map(item => `<tr><td><input type="checkbox" data-lc-pick="${esc(key(item))}" ${state.selected.has(key(item)) ? 'checked' : ''} ${item.draft_id ? 'disabled' : ''} aria-label="Chọn ${esc(item.name)}"></td>
       <td class="product-name">${esc(item.name)}</td><td>${esc(item.source_shop)}</td><td>${money(item.price)}</td>
-      <td>${item.draft_id ? '<span class="badge">Đã có bản nháp</span>' : item.has_detail ? '<span class="badge">Đủ ảnh &amp; mô tả</span>' : '<span class="badge">Thiếu chi tiết</span>'}</td></tr>`).join('');
+      <td>${coverage(item)}</td></tr>`).join('');
     return `<section class="panel"><div class="panel-head"><div><h3>2. Chọn sản phẩm để sao chép</h3>
       <p class="panel-sub">Danh sách gồm sản phẩm đã quét ở bước 1 (hoặc ở mục Thu thập shop với loại dữ liệu “Đối thủ / thị trường”).</p></div></div>
       <div class="lc-row"><button type="button" class="btn btn-soft btn-sm" data-lc-all="1">Chọn tất cả</button><button type="button" class="btn btn-soft btn-sm" data-lc-all="0">Bỏ chọn tất cả</button><small>${state.sources.filter(item => !item.draft_id).length} sản phẩm chưa có bản nháp</small></div>
