@@ -1,8 +1,7 @@
 """Keep the SQLite database across container restarts by mirroring it to remote storage.
 
-Two stores are supported, chosen by environment variables:
-  * S3-compatible (Cloudflare R2, B2, ...): BACKUP_BUCKET, BACKUP_ENDPOINT,
-    BACKUP_ACCESS_KEY_ID, BACKUP_SECRET_ACCESS_KEY
+Two stores are supported, chosen by environment variables (Neon wins when both are set):
+  * Neon Postgres: BACKUP_NEON_URL (the connection string from the Neon dashboard)
   * Cloudflare D1: BACKUP_D1_ACCOUNT_ID, BACKUP_D1_DATABASE_ID, BACKUP_D1_API_TOKEN
 Without them the app behaves as before. Restore runs before the schema is created,
 so a fresh container starts from the last upload instead of an empty file.
@@ -24,9 +23,8 @@ import urllib.request
 from pathlib import Path
 
 LOG = logging.getLogger('marketlens.backup')
-OBJECT_KEY = 'market.db.gz'
-PREVIOUS_KEY = 'market.db.prev.gz'
 INTERVAL_SECONDS = 60
+NEON_INTERVAL_SECONDS = 300  # Neon suspends compute after ~5 idle minutes; uploads only happen after changes
 D1_INTERVAL_SECONDS = 180  # D1 bills per row written; a snapshot is several rows
 D1_CHUNK_BYTES = 512 * 1024
 
@@ -35,48 +33,56 @@ def _clean(name):
     return ''.join(os.environ.get(name, '').split())
 
 
-def fingerprint():
-    """Short hashes of the S3 credentials, so a mistyped value can be spotted without revealing it."""
-    import hashlib
-    return ' '.join(f'{label}={hashlib.sha256(_clean(name).encode()).hexdigest()[:8]}(len {len(_clean(name))})'
-                    for label, name in (('key', 'BACKUP_ACCESS_KEY_ID'), ('secret', 'BACKUP_SECRET_ACCESS_KEY')))
+class NeonStore:
+    """Latest two snapshots as BYTEA rows in a Neon Postgres table; a checksum guards every read."""
+    name = 'neon'
+    interval = NEON_INTERVAL_SECONDS
 
+    def __init__(self, dsn, connect=None):
+        self.dsn, self.connect_fn, self.ready = dsn, connect, False
 
-def _is_missing(error):
-    code = getattr(error, 'response', {}).get('Error', {}).get('Code', '')
-    return code in ('NoSuchKey', '404', 'NotFound')
+    def _connect(self):
+        if self.connect_fn:
+            return self.connect_fn()
+        import psycopg
+        # prepare_threshold=None keeps statements unprepared, which Neon's pooled endpoint requires.
+        return psycopg.connect(self.dsn, connect_timeout=30, prepare_threshold=None)
 
-
-class S3Store:
-    """Latest snapshot as market.db.gz, previous one kept as market.db.prev.gz."""
-    name = 's3'
-    interval = INTERVAL_SECONDS
-
-    def __init__(self, client, bucket):
-        self.client, self.bucket = client, bucket
+    def _run(self, work):
+        """Neon suspends idle compute, so the first connection can fail while it wakes; retry briefly."""
+        last = None
+        for attempt in range(3):
+            try:
+                with self._connect() as conn:
+                    if not self.ready:
+                        conn.execute('CREATE TABLE IF NOT EXISTS marketlens_backup(id BIGSERIAL PRIMARY KEY, '
+                                     'created_at TIMESTAMPTZ NOT NULL DEFAULT now(), bytes INTEGER NOT NULL, '
+                                     'sha256 TEXT NOT NULL, data BYTEA NOT NULL)')
+                        self.ready = True
+                    return work(conn)
+            except Exception as error:
+                last = error
+                time.sleep(1 + attempt * 2)
+        raise last
 
     def fetch(self):
-        with tempfile.TemporaryFile() as stream:
-            try:
-                self.client.download_fileobj(self.bucket, OBJECT_KEY, stream)
-            except Exception as error:
-                if _is_missing(error):
-                    return None
-                raise
-            stream.seek(0)
-            return stream.read()
+        def work(conn):
+            return conn.execute('SELECT data, bytes, sha256 FROM marketlens_backup ORDER BY id DESC LIMIT 1').fetchone()
+        row = self._run(work)
+        if row is None:
+            return None
+        data = bytes(row[0])
+        if len(data) != row[1] or hashlib.sha256(data).hexdigest() != row[2]:
+            raise RuntimeError('Bản sao lưu trên Neon không khớp checksum.')
+        return data
 
     def save(self, data):
-        try:
-            self.client.copy_object(Bucket=self.bucket, Key=PREVIOUS_KEY,
-                                    CopySource={'Bucket': self.bucket, 'Key': OBJECT_KEY})
-        except Exception as error:
-            if not _is_missing(error):
-                LOG.debug('Không giữ được bản trước: %s', error)
-        with tempfile.TemporaryFile() as stream:
-            stream.write(data)
-            stream.seek(0)
-            self.client.upload_fileobj(stream, self.bucket, OBJECT_KEY)
+        def work(conn):
+            conn.execute('INSERT INTO marketlens_backup(bytes, sha256, data) VALUES(%s, %s, %s)',
+                         (len(data), hashlib.sha256(data).hexdigest(), data))
+            conn.execute('DELETE FROM marketlens_backup WHERE id NOT IN '
+                         '(SELECT id FROM marketlens_backup ORDER BY id DESC LIMIT 2)')
+        self._run(work)
 
 
 class D1Store:
@@ -149,14 +155,9 @@ class D1Store:
 
 def configured_store():
     """Return the store selected by environment variables, or None."""
-    bucket, endpoint = _clean('BACKUP_BUCKET'), _clean('BACKUP_ENDPOINT')
-    key, secret = _clean('BACKUP_ACCESS_KEY_ID'), _clean('BACKUP_SECRET_ACCESS_KEY')
-    if bucket and endpoint and key and secret:
-        import boto3
-        from botocore.config import Config
-        client = boto3.client('s3', endpoint_url=endpoint, aws_access_key_id=key, aws_secret_access_key=secret,
-                              region_name='auto', config=Config(retries={'max_attempts': 3}, signature_version='s3v4'))
-        return S3Store(client, bucket)
+    neon = ''.join(os.environ.get('BACKUP_NEON_URL', '').split())
+    if neon:
+        return NeonStore(neon)
     account, database, token = _clean('BACKUP_D1_ACCOUNT_ID'), _clean('BACKUP_D1_DATABASE_ID'), _clean('BACKUP_D1_API_TOKEN')
     if account and database and token:
         return D1Store(account, database, token)
@@ -192,8 +193,7 @@ def restore_if_missing(db_path, store=None):
         LOG.warning('Đã khôi phục database từ bản sao lưu (%d byte).', db_path.stat().st_size)
         return 'restored'
     except Exception as error:
-        detail = f' [{fingerprint()}]' if getattr(store, 'name', '') == 's3' else ''
-        LOG.error('Không khôi phục được từ kho sao lưu: %s%s', error, detail)
+        LOG.error('Không khôi phục được từ kho sao lưu: %s', error)
         return 'error'
 
 
@@ -275,7 +275,7 @@ def selftest():
     """Round-trip a tiny database through the configured store: python db_backup.py --selftest"""
     store = configured_store()
     if store is None:
-        print('Chưa đặt biến BACKUP_* (S3) hoặc BACKUP_D1_* (D1).')
+        print('Chưa đặt biến BACKUP_NEON_URL (Neon) hoặc BACKUP_D1_* (D1).')
         return 1
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder, 'probe.db')

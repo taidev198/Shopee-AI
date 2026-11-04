@@ -1,31 +1,63 @@
-"""SQLite mirror to S3-compatible storage, exercised against an in-memory fake client."""
+"""SQLite mirror to remote storage, exercised against in-memory fakes."""
+import hashlib
 import sqlite3
 
 import pytest
-from botocore.exceptions import ClientError
 
 import db_backup
 
 
-class FakeS3:
+class FakeCursor:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+
+class FakeConn:
+    def __init__(self, db):
+        self.db = db
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, params=()):
+        if sql.startswith('CREATE'):
+            return FakeCursor([])
+        if sql.startswith('INSERT'):
+            self.db.rows.append((params[2], params[0], params[1]))
+            return FakeCursor([])
+        if sql.startswith('DELETE'):
+            self.db.rows = self.db.rows[-2:]
+            return FakeCursor([])
+        if sql.startswith('SELECT'):
+            return FakeCursor([self.db.rows[-1]] if self.db.rows else [])
+        raise AssertionError(sql)
+
+
+class FakeNeon:
+    """Stands in for psycopg.connect: rows are (data, bytes, sha256), newest last."""
     def __init__(self):
-        self.objects = {}
+        self.rows = []
         self.fail = None
 
-    def download_fileobj(self, bucket, key, stream):
+    def connect(self):
         if self.fail:
             raise self.fail
-        if key not in self.objects:
-            raise ClientError({'Error': {'Code': 'NoSuchKey'}}, 'GetObject')
-        stream.write(self.objects[key])
+        return FakeConn(self)
 
-    def upload_fileobj(self, stream, bucket, key):
-        self.objects[key] = stream.read()
 
-    def copy_object(self, Bucket, Key, CopySource):
-        if CopySource['Key'] not in self.objects:
-            raise ClientError({'Error': {'Code': 'NoSuchKey'}}, 'CopyObject')
-        self.objects[Key] = self.objects[CopySource['Key']]
+def neon(fake):
+    return db_backup.NeonStore('postgresql://unused', connect=fake.connect)
+
+
+@pytest.fixture(autouse=True)
+def no_retry_sleep(monkeypatch):
+    monkeypatch.setattr(db_backup.time, 'sleep', lambda seconds: None)
 
 
 def make_db(path, value='a'):
@@ -45,45 +77,52 @@ def read(path):
 
 
 def test_backup_then_restore_on_empty_disk_round_trips_data(tmp_path):
-    s3 = db_backup.S3Store(FakeS3(), 'bucket')
+    store = neon(FakeNeon())
     source = tmp_path / 'a' / 'market.db'
     source.parent.mkdir()
     make_db(source, 'shop-data')
-    assert db_backup.backup_now(source, s3) is True
+    assert db_backup.backup_now(source, store) is True
     fresh = tmp_path / 'b' / 'market.db'
     fresh.parent.mkdir()
-    assert db_backup.restore_if_missing(fresh, s3) == 'restored'
+    assert db_backup.restore_if_missing(fresh, store) == 'restored'
     assert read(fresh) == ['shop-data']
 
 
 def test_existing_database_is_never_overwritten_by_restore(tmp_path):
-    s3 = db_backup.S3Store(FakeS3(), 'bucket')
     path = tmp_path / 'market.db'
     make_db(path, 'local')
-    assert db_backup.restore_if_missing(path, s3) == 'present'
+    assert db_backup.restore_if_missing(path, neon(FakeNeon())) == 'present'
     assert read(path) == ['local']
 
 
-def test_first_run_with_no_backup_starts_empty_and_second_upload_keeps_previous(tmp_path):
-    fake = FakeS3()
+def test_first_run_starts_empty_and_only_the_two_newest_snapshots_are_kept(tmp_path):
+    fake = FakeNeon()
     path = tmp_path / 'market.db'
-    assert db_backup.restore_if_missing(path, db_backup.S3Store(fake, 'bucket')) == 'empty'
-    make_db(path, 'one')
-    db_backup.backup_now(path, db_backup.S3Store(fake, 'bucket'))
-    make_db(path, 'two')
-    db_backup.backup_now(path, db_backup.S3Store(fake, 'bucket'))
-    assert db_backup.PREVIOUS_KEY in fake.objects and fake.objects[db_backup.PREVIOUS_KEY] != fake.objects[db_backup.OBJECT_KEY]
+    assert db_backup.restore_if_missing(path, neon(fake)) == 'empty'
+    for value in ('one', 'two', 'three'):
+        make_db(path, value)
+        db_backup.backup_now(path, neon(fake))
+    assert len(fake.rows) == 2
 
 
-def test_access_error_is_reported_not_treated_as_empty(tmp_path):
-    fake = FakeS3()
-    fake.fail = ClientError({'Error': {'Code': 'AccessDenied'}}, 'GetObject')
-    assert db_backup.restore_if_missing(tmp_path / 'market.db', db_backup.S3Store(fake, 'bucket')) == 'error'
+def test_corrupted_snapshot_is_rejected_not_restored(tmp_path):
+    fake = FakeNeon()
+    path = tmp_path / 'market.db'
+    make_db(path)
+    db_backup.backup_now(path, neon(fake))
+    data, size, _ = fake.rows[-1]
+    fake.rows[-1] = (data[:-3] + b'xyz', size, hashlib.sha256(b'other').hexdigest())
+    assert db_backup.restore_if_missing(tmp_path / 'restored.db', neon(fake)) == 'error'
+
+
+def test_connection_error_is_reported_not_treated_as_empty(tmp_path):
+    fake = FakeNeon()
+    fake.fail = RuntimeError('password authentication failed')
+    assert db_backup.restore_if_missing(tmp_path / 'market.db', neon(fake)) == 'error'
 
 
 def test_not_configured_is_a_noop(tmp_path, monkeypatch):
-    for name in ('BACKUP_BUCKET', 'BACKUP_ENDPOINT', 'BACKUP_ACCESS_KEY_ID', 'BACKUP_SECRET_ACCESS_KEY',
-                 'BACKUP_D1_ACCOUNT_ID', 'BACKUP_D1_DATABASE_ID', 'BACKUP_D1_API_TOKEN'):
+    for name in ('BACKUP_NEON_URL', 'BACKUP_D1_ACCOUNT_ID', 'BACKUP_D1_DATABASE_ID', 'BACKUP_D1_API_TOKEN'):
         monkeypatch.delenv(name, raising=False)
     assert db_backup.restore_if_missing(tmp_path / 'market.db') == 'disabled'
     assert db_backup.backup_now(tmp_path / 'market.db') is False
@@ -91,18 +130,27 @@ def test_not_configured_is_a_noop(tmp_path, monkeypatch):
 
 
 def test_loop_uploads_only_when_the_file_changed(tmp_path):
-    fake = db_backup.S3Store(FakeS3(), 'bucket')
+    fake = FakeNeon()
     path = tmp_path / 'market.db'
     make_db(path)
-    loop = db_backup.BackupLoop(path, store=fake)
+    loop = db_backup.BackupLoop(path, store=neon(fake))
     loop._tick()
-    first = fake.client.objects[db_backup.OBJECT_KEY]
-    fake.client.objects[db_backup.OBJECT_KEY] = b'marker'
+    assert len(fake.rows) == 1
     loop._tick()
-    assert fake.client.objects[db_backup.OBJECT_KEY] == b'marker'
+    assert len(fake.rows) == 1
     make_db(path, 'more')
     loop._tick()
-    assert fake.client.objects[db_backup.OBJECT_KEY] != b'marker' and first
+    assert len(fake.rows) == 2
+
+
+def test_neon_store_is_selected_from_environment_and_wins_over_d1(monkeypatch):
+    monkeypatch.setenv('BACKUP_D1_ACCOUNT_ID', 'acct')
+    monkeypatch.setenv('BACKUP_D1_DATABASE_ID', 'db')
+    monkeypatch.setenv('BACKUP_D1_API_TOKEN', 'token')
+    monkeypatch.setenv('BACKUP_NEON_URL', ' postgresql://user:pw@host/db?sslmode=require\n')
+    store = db_backup.configured_store()
+    assert store.name == 'neon' and store.dsn == 'postgresql://user:pw@host/db?sslmode=require'
+    assert store.interval >= 300
 
 
 class FakeD1:
