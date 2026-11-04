@@ -266,10 +266,10 @@ async function refreshChromeConnection(){
  S.chromeConnected=false;
  for(let attempt=0;attempt<3&&!S.chromeConnected;attempt++){
   try{const bridge=await window.MarketLensChrome.ping();S.chromeConnected=true;S.chromeVersion=bridge.version}
-  catch{await new Promise(r=>setTimeout(r,700))}
+  catch(err){S.chromeError=(err.code||'')+(err.message?': '+err.message:'');await new Promise(r=>setTimeout(r,700))}
  }
  const el=$('chromeConnection');
- if(el)el.innerHTML=S.chromeConnected?`Chrome đã kết nối (v${esc(S.chromeVersion)}) — mỗi lần bấm Quét sẽ đọc dữ liệu mới.`:'Chưa thấy tiện ích trên trang này. <button type="button" class="btn btn-soft btn-sm" data-recheck-chrome>↻ Kiểm tra lại</button> <a class="btn btn-primary btn-sm" href="/static/marketlens-chrome-extension.zip?v=1.3.7-host-permissions-01" download>⬇ Tải bản mới</a><br><small>Đã cài rồi mà vẫn thế? Bản cũ chưa hỗ trợ địa chỉ web này: chạy lại lệnh cài nhanh bên dưới (hoặc tải bản mới, ghi đè thư mục cũ), vào <code>chrome://extensions</code> bấm nút ⟳ Tải lại ở MarketLens, rồi bấm Kiểm tra lại. Nếu tiện ích đang tắt hoặc bị gỡ, hãy bật lại.</small>';
+ if(el)el.innerHTML=S.chromeConnected?`Chrome đã kết nối (v${esc(S.chromeVersion)}) — mỗi lần bấm Quét sẽ đọc dữ liệu mới.`:'Chưa thấy tiện ích trên trang này. <button type="button" class="btn btn-soft btn-sm" data-recheck-chrome>↻ Kiểm tra lại</button> <a class="btn btn-primary btn-sm" href="/static/marketlens-chrome-extension.zip?v=1.3.7-host-permissions-01" download>⬇ Tải bản mới</a><br><small>Đã cài rồi mà vẫn thế? Bản cũ chưa hỗ trợ địa chỉ web này: chạy lại lệnh cài nhanh bên dưới (hoặc tải bản mới, ghi đè thư mục cũ), vào <code>chrome://extensions</code> bấm nút ⟳ Tải lại ở MarketLens, rồi bấm Kiểm tra lại. Nếu tiện ích đang tắt hoặc bị gỡ, hãy bật lại.<br>Chẩn đoán: trang chạy tại <code>'+esc(location.origin)+'</code> (tiện ích chỉ hỗ trợ <code>https://shopee-ai.onrender.com</code>, <code>http://localhost:8000</code>, <code>http://127.0.0.1:8000</code>); lỗi: <code>'+esc(S.chromeError||'không có phản hồi')+'</code></small>';
 }
 function updateCrawlFeedback(message){
  if(S.crawlRun)S.crawlRun.message=message;
