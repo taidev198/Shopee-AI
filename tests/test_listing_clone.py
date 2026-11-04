@@ -96,3 +96,14 @@ def test_user_can_only_use_drafts_of_assigned_shops(clone):
     draft = user.get('/api/listings/drafts', params={'shop_id': shop['id']}).json()[0]
     assert user.put(f"/api/listings/drafts/{draft['id']}", params={'shop_id': other['id']}, json={'name': 'x'}).status_code == 403
     assert user.put(f"/api/listings/drafts/{draft['id']}", params={'shop_id': shop['id']}, json={'name': 'ok'}).status_code == 200
+
+
+def test_source_search_matches_each_word_of_name_or_shop_without_matching_inside_words(clone):
+    _, client, shop = clone
+    search = lambda q: client.get('/api/listings/sources', params={'shop_id': shop['id'], 'q': q}).json()
+    assert len(search('hop com')) == 1 and len(search('HỘP')) == 1
+    assert search('hop') and search('doi thu') and not search('xyz')
+    with clone[0].db() as c:  # "hop" must not match the "shop" inside the shop name
+        c.execute('''INSERT INTO observations(shop_id,role,source_shop,sku,name,category,price,sold_total,product_url,snapshot_date)
+                     VALUES(?,?,?,?,?,?,?,?,?,?)''', (shop['id'], 'market', 'Shop ABC', '9', 'Kệ sách', '', 1, 1, '', '2026-10-15'))
+    assert [row['name'] for row in search('hop')] == ['Hộp đựng cơm 3 ngăn']

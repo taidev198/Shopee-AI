@@ -137,7 +137,7 @@ def install(app, db):
     def sources(shop_id: str, q: str = '', limit: int = 200):
         """Products of other shops that can be copied (latest observation each)."""
         limit = max(1, min(limit, 500))
-        needle = _norm(q)
+        tokens = [token for token in _norm(q).split('_') if token]
         with db() as c:
             require_shop(c, shop_id)
             latest = {}
@@ -150,7 +150,8 @@ def install(app, db):
                 "SELECT id,source_shop,source_sku FROM listing_drafts WHERE shop_id=?", (shop_id,))}
         rows = []
         for key, row in latest.items():
-            if needle and needle not in _norm(row['name']) and needle not in key[0]:
+            haystack = '_' + _norm(row['name']) + '_' + key[0]  # every word typed must start a word of name or shop
+            if any('_' + token not in haystack for token in tokens):
                 continue
             rows.append({'source_shop': row['source_shop'], 'sku': row['sku'], 'name': row['name'], 'price': row['price'],
                          'sold_total': row['sold_total'], 'product_url': row['product_url'],
