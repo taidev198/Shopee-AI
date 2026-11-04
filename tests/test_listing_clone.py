@@ -107,3 +107,41 @@ def test_source_search_matches_each_word_of_name_or_shop_without_matching_inside
         c.execute('''INSERT INTO observations(shop_id,role,source_shop,sku,name,category,price,sold_total,product_url,snapshot_date)
                      VALUES(?,?,?,?,?,?,?,?,?,?)''', (shop['id'], 'market', 'Shop ABC', '9', 'Kệ sách', '', 1, 1, '', '2026-10-15'))
     assert [row['name'] for row in search('hop')] == ['Hộp đựng cơm 3 ngăn']
+
+
+def test_bulk_edit_applies_price_text_attribute_and_status_changes_to_selected_drafts_only(clone):
+    app, client, shop = clone
+    first = create(client, shop['id']).json()['created'][0]
+    with app.db() as c:
+        c.execute('''INSERT INTO observations(shop_id,role,source_shop,sku,name,category,price,sold_total,product_url,snapshot_date)
+                     VALUES(?,?,?,?,?,?,?,?,?,?)''', (shop['id'], 'market', 'Shop Đối Thủ', '56.1', 'Bình nước', '', 50000, 1, '', '2026-10-15'))
+    second = client.post('/api/listings/drafts', json={'shop_id': shop['id'], 'items': [{'source_shop': 'Shop Đối Thủ', 'sku': '56.1'}]}).json()['created'][0]
+    bulk = lambda **body: client.post('/api/listings/drafts/bulk', json={'shop_id': shop['id'], **body})
+    result = bulk(ids=[first['id']], price_mode='markup_pct', price_value=20, stock=9, weight_g=250, category='Nhà cửa > Bếp',
+                  status='ready', name_prefix='[HOT] ', name_find='cao cấp', name_replace='PRO', description_append='\nFreeship',
+                  attribute_name='Xuất xứ', attribute_value='Việt Nam')
+    assert result.status_code == 200 and result.json()['updated'] == 1, result.text
+    drafts = {row['id']: row for row in client.get('/api/listings/drafts', params={'shop_id': shop['id']}).json()}
+    one, two = drafts[first['id']], drafts[second['id']]
+    assert one['price'] == 120000 and one['stock'] == 9 and one['weight_g'] == 250 and one['status'] == 'ready'
+    assert one['name'] == '[HOT] Hộp đựng cơm 3 ngăn PRO' and one['description'].endswith('\nFreeship')
+    assert {'name': 'Xuất xứ', 'value': 'Việt Nam'} in one['attributes'] and one['category'] == 'Nhà cửa > Bếp'
+    assert two['price'] == 50000 and two['stock'] == 0 and two['status'] == 'draft'
+    assert bulk(all=True, price_mode='add', price_value=-1000).json()['updated'] == 2
+    assert bulk(all=True, price_mode='set', price_value=77000).status_code == 200
+    again = {row['id']: row for row in client.get('/api/listings/drafts', params={'shop_id': shop['id']}).json()}
+    assert again[first['id']]['price'] == again[second['id']]['price'] == 77000
+    assert bulk(ids=[]).status_code == 422 and bulk(all=True, price_mode='set').status_code == 422
+    assert bulk(all=True, attribute_name='x').status_code == 422
+    assert bulk(ids=[second['id']], delete=True).json()['deleted'] == 1
+    assert [row['id'] for row in client.get('/api/listings/drafts', params={'shop_id': shop['id']}).json()] == [first['id']]
+
+
+def test_user_bulk_edit_is_limited_to_assigned_shop(clone):
+    app, system, shop = clone
+    other = system.post('/api/shops', json={'url': 'https://shopee.vn/not_assigned_bulk'}).json()
+    system.post('/api/auth/accounts', json={'username': 'bulk-user', 'password': auth_tests.USER_PASSWORD, 'shop_ids': [shop['id']]})
+    user = auth_tests.login(app, 'bulk-user', auth_tests.USER_PASSWORD)
+    create(user, shop['id'])
+    assert user.post('/api/listings/drafts/bulk', json={'shop_id': other['id'], 'all': True, 'stock': 1}).status_code == 403
+    assert user.post('/api/listings/drafts/bulk', json={'shop_id': shop['id'], 'all': True, 'stock': 1}).status_code == 200

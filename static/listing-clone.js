@@ -2,7 +2,7 @@
 // "Sao chép sản phẩm": choose products collected from other shops, edit drafts, then export a
 // Mass Upload spreadsheet or hand the draft to the Chrome extension for the user's Seller Centre.
 (() => {
-  const state = {shopId: null, sources: [], drafts: [], selected: new Set(), q: '', markup: 0, loading: false, error: '', message: '', busy: false, scheduled: false};
+  const state = {shopId: null, sources: [], drafts: [], selected: new Set(), q: '', markup: 0, loading: false, error: '', message: '', busy: false, scheduled: false, page: 1, pageSize: 10, draftSel: new Set(), bulk: {}, bulkOpen: false};
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]));
   const list = value => Array.isArray(value) ? value : [];
   const money = value => value == null ? '—' : new Intl.NumberFormat('vi-VN').format(value) + '₫';
@@ -18,6 +18,8 @@
       const [sources, drafts] = await Promise.all([api('/api/listings/sources?' + query({q: state.q})), api('/api/listings/drafts?' + query())]);
       if (shopId !== state.shopId) return;
       state.sources = list(sources); state.drafts = list(drafts);
+      state.page = Math.min(state.page, pageCount());
+      state.draftSel = new Set([...state.draftSel].filter(id => state.drafts.some(item => item.id === id)));
     } catch (error) { state.error = error.message || 'Chưa tải được dữ liệu.'; }
     finally { if (shopId === state.shopId) { state.loading = false; redraw(); } }
   }
@@ -53,7 +55,7 @@
     const images = list(draft.images).map((url, index) => `<span class="lc-img"><img src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer"><button type="button" data-lc-img="${esc(draft.id)}:${index}" title="Bỏ ảnh">×</button></span>`).join('');
     const variants = list(draft.variants).map(item => `${esc(item.name)}: ${esc(list(item.options).join(', '))}`).join(' · ');
     const attributes = list(draft.attributes).map(item => `${esc(item.name)}: ${esc(item.value)}`).join(' · ');
-    return `<article class="panel lc-draft" data-lc-draft="${esc(draft.id)}"><div class="lc-row"><strong>${draft.status === 'ready' ? '✅ Sẵn sàng' : draft.status === 'posted' ? '📦 Đã đăng' : '✎ Nháp'}</strong>
+    return `<article class="panel lc-draft" data-lc-draft="${esc(draft.id)}"><div class="lc-row"><input type="checkbox" data-lc-dpick="${esc(draft.id)}" ${state.draftSel.has(draft.id) ? 'checked' : ''} aria-label="Chọn bản nháp" style="width:auto"><strong>${draft.status === 'ready' ? '✅ Sẵn sàng' : draft.status === 'posted' ? '📦 Đã đăng' : '✎ Nháp'}</strong>
       <small>Gốc: ${esc(draft.source_shop)} · <a href="${esc(draft.source_url)}" target="_blank" rel="noopener noreferrer">xem sản phẩm</a></small></div>
       <label>Tên sản phẩm <input data-lc-field="name" maxlength="120" value="${esc(draft.name)}"></label>
       <div class="lc-row"><label>Giá (₫) <input type="number" data-lc-field="price" min="0" value="${esc(draft.price ?? '')}"></label>
@@ -69,19 +71,49 @@
         <button class="btn btn-white btn-sm" data-lc-delete="${esc(draft.id)}">Xóa</button></div></article>`;
   }
 
+  const pageCount = () => Math.max(1, Math.ceil(state.drafts.length / state.pageSize));
+  const bulkValue = name => esc(state.bulk[name] ?? '');
+  function bulkForm(count) {
+    const field = (name, label, type = 'text', extra = '') => `<label>${label}<input type="${type}" data-lc-bulk="${name}" value="${bulkValue(name)}" ${extra}></label>`;
+    return `<details class="lc-bulk" ${state.bulkOpen ? 'open' : ''}><summary><strong>Sửa thuộc tính hàng loạt</strong> ${count ? `(áp dụng cho ${count} bản đã chọn)` : '(chọn bản nháp ở các thẻ bên dưới trước)'}</summary>
+      <div class="lc-bulk-grid">
+        <label>Chỉnh giá<select data-lc-bulk="price_mode"><option value="">Không đổi</option>${[['markup_pct', 'Tăng/giảm theo %'], ['add', 'Cộng/trừ số tiền (₫)'], ['set', 'Đặt giá cố định (₫)']].map(([value, text]) => `<option value="${value}" ${state.bulk.price_mode === value ? 'selected' : ''}>${text}</option>`).join('')}</select></label>
+        ${field('price_value', 'Giá trị chỉnh giá', 'number', 'step="any"')}${field('stock', 'Kho hàng (đặt cho tất cả)', 'number', 'min="0"')}${field('weight_g', 'Cân nặng g (đặt cho tất cả)', 'number', 'min="0"')}
+        ${field('category', 'Ngành hàng (đặt cho tất cả)')}
+        <label>Trạng thái<select data-lc-bulk="status"><option value="">Không đổi</option>${[['ready', 'Sẵn sàng'], ['draft', 'Nháp'], ['posted', 'Đã đăng']].map(([value, text]) => `<option value="${value}" ${state.bulk.status === value ? 'selected' : ''}>${text}</option>`).join('')}</select></label>
+        ${field('name_prefix', 'Thêm vào đầu tên')}${field('name_suffix', 'Thêm vào cuối tên')}${field('name_find', 'Tên: tìm chữ')}${field('name_replace', 'Tên: thay bằng')}
+        ${field('description_prepend', 'Thêm vào đầu mô tả')}${field('description_append', 'Thêm vào cuối mô tả')}${field('description_find', 'Mô tả: tìm chữ')}${field('description_replace', 'Mô tả: thay bằng')}
+        ${field('attribute_name', 'Thuộc tính: tên (vd Xuất xứ)')}${field('attribute_value', 'Thuộc tính: giá trị')}
+      </div>
+      <div class="lc-row"><button type="button" class="btn btn-primary btn-sm" data-lc-bulk-apply ${count && !state.busy ? '' : 'disabled'}>Áp dụng cho ${count} bản đã chọn</button>
+        <button type="button" class="btn btn-white btn-sm" data-lc-bulk-delete ${count && !state.busy ? '' : 'disabled'}>Xóa ${count} bản đã chọn</button></div></details>`;
+  }
+
+  function pager() {
+    const pages = pageCount();
+    return `<div class="lc-row lc-pager"><button type="button" class="btn btn-soft btn-sm" data-lc-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''}>‹ Trước</button>
+      <span>Trang ${state.page}/${pages} · ${state.drafts.length} bản nháp</span>
+      <button type="button" class="btn btn-soft btn-sm" data-lc-page="${state.page + 1}" ${state.page >= pages ? 'disabled' : ''}>Sau ›</button>
+      <label>Mỗi trang <select data-lc-pagesize>${[10, 20, 50].map(n => `<option ${n === state.pageSize ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>`;
+  }
+
   function draftsSection() {
     const ready = state.drafts.filter(item => item.status === 'ready').length;
+    const count = state.draftSel.size;
+    const visible = state.drafts.slice((state.page - 1) * state.pageSize, state.page * state.pageSize);
     return `<section class="panel"><div class="panel-head"><div><h3>3. Bản nháp đăng bán (${state.drafts.length})</h3>
       <p class="panel-sub">Chỉnh lại tên, giá, mô tả cho phù hợp shop của bạn rồi chọn một cách đăng.</p></div>
       <div class="lc-row"><a class="btn btn-soft btn-sm ${state.drafts.length ? '' : 'disabled'}" href="/api/listings/export?${esc(query({}).toString())}" data-lc-export>Tải file Mass Upload (.xlsx)</a>
+      ${count ? `<a class="btn btn-soft btn-sm" href="/api/listings/export?${esc(query({ids: [...state.draftSel].join(',')}).toString())}">Chỉ ${count} bản đã chọn</a>` : ''}
       ${ready ? `<a class="btn btn-soft btn-sm" href="/api/listings/export?${esc(query({ids: state.drafts.filter(item => item.status === 'ready').map(item => item.id).join(',')}).toString())}">Chỉ ${ready} bản sẵn sàng</a>` : ''}</div></div>
-      ${state.drafts.map(draftCard).join('') || '<div class="instructions">Chưa có bản nháp. Chọn sản phẩm ở bước 2.</div>'}</section>`;
+      ${state.drafts.length ? `<div class="lc-row"><button type="button" class="btn btn-soft btn-sm" data-lc-dall="1">Chọn tất cả ${state.drafts.length} bản</button><button type="button" class="btn btn-soft btn-sm" data-lc-dall="page">Chọn trang này</button><button type="button" class="btn btn-soft btn-sm" data-lc-dall="0">Bỏ chọn tất cả</button><small>Đã chọn ${count}</small></div>${bulkForm(count)}${pager()}` : ''}
+      ${visible.map(draftCard).join('') || '<div class="instructions">Chưa có bản nháp. Chọn sản phẩm ở bước 2.</div>'}${state.drafts.length > state.pageSize ? pager() : ''}</section>`;
   }
 
   function renderListings() {
     if (!S.shopId) return '<section class="panel"><h2>Chưa có shop</h2><p>Thêm shop của bạn trước khi sao chép sản phẩm.</p></section>';
     if (state.shopId !== S.shopId) {
-      Object.assign(state, {shopId: S.shopId, sources: [], drafts: [], selected: new Set(), message: '', error: ''});
+      Object.assign(state, {shopId: S.shopId, sources: [], drafts: [], selected: new Set(), draftSel: new Set(), page: 1, message: '', error: ''});
       if (!state.scheduled) { state.scheduled = true; setTimeout(() => { state.scheduled = false; load(); }, 0); }
     }
     return `<div class="lc-workspace"><section class="panel lc-warning"><span class="eyebrow">SAO CHÉP SẢN PHẨM → KÊNH NGƯỜI BÁN</span>
@@ -109,6 +141,15 @@
     });
     return values;
   }
+  // Persist edits typed into the cards currently on screen (before paging or bulk changes reload the list).
+  async function saveVisible() {
+    const ids = [...document.querySelectorAll('[data-lc-draft]')].map(card => card.dataset.lcDraft);
+    for (const id of ids) {
+      const draft = draftById(id), values = cardValues(id);
+      const changed = draft && Object.entries(values).some(([name, value]) => String(draft[name] ?? '') !== String(value ?? ''));
+      if (changed) await save(id);
+    }
+  }
   const save = id => json(`/api/listings/drafts/${encodeURIComponent(id)}?` + query(), 'PUT', cardValues(id));
 
   // The shared crawl handler in app.js runs the scan; refresh the product list once it finishes.
@@ -120,6 +161,10 @@
       if (!running && Date.now() - started > 1500 || Date.now() - started > 3 * 3600 * 1000) { clearInterval(timer); load(); }
     }, 1000);
   });
+  document.addEventListener('input', event => {
+    if (event.target.matches?.('input[data-lc-bulk]')) state.bulk[event.target.dataset.lcBulk] = event.target.value;
+  });
+  document.addEventListener('toggle', event => { if (event.target.matches?.('.lc-bulk')) state.bulkOpen = event.target.open; }, true);
   document.addEventListener('submit', event => {
     if (!event.target.matches('[data-lc-search]')) return;
     event.preventDefault();
@@ -130,12 +175,36 @@
     const target = event.target;
     if (target.matches('[data-lc-pick]')) { target.checked ? state.selected.add(target.dataset.lcPick) : state.selected.delete(target.dataset.lcPick); redraw(); }
     if (target.matches('[data-lc-markup]')) state.markup = Number(target.value) || 0;
+    if (target.matches('[data-lc-dpick]')) { target.checked ? state.draftSel.add(target.dataset.lcDpick) : state.draftSel.delete(target.dataset.lcDpick); redraw(); }
+    if (target.matches('[data-lc-pagesize]')) { state.pageSize = Number(target.value) || 10; state.page = 1; redraw(); }
+    if (target.matches('select[data-lc-bulk]')) state.bulk[target.dataset.lcBulk] = target.value;
   });
   document.addEventListener('click', event => {
-    const button = event.target.closest('[data-lc-all],[data-lc-create],[data-lc-save],[data-lc-status],[data-lc-post],[data-lc-delete],[data-lc-img]');
+    const button = event.target.closest('[data-lc-all],[data-lc-dall],[data-lc-page],[data-lc-bulk-apply],[data-lc-bulk-delete],[data-lc-create],[data-lc-save],[data-lc-status],[data-lc-post],[data-lc-delete],[data-lc-img]');
     if (!button) return;
     const d = button.dataset;
-    if (d.lcAll !== undefined) {
+    if (d.lcDall !== undefined) {
+      const pageIds = state.drafts.slice((state.page - 1) * state.pageSize, state.page * state.pageSize).map(item => item.id);
+      state.draftSel = d.lcDall === '1' ? new Set(state.drafts.map(item => item.id)) : d.lcDall === 'page' ? new Set([...state.draftSel, ...pageIds]) : new Set();
+      redraw();
+    } else if (d.lcPage !== undefined) {
+      const target = Math.min(pageCount(), Math.max(1, Number(d.lcPage)));
+      act(async () => { await saveVisible(); state.page = target; });
+    } else if (d.lcBulkApply !== undefined || d.lcBulkDelete !== undefined) {
+      const remove = d.lcBulkDelete !== undefined;
+      if (remove && !confirm(`Xóa ${state.draftSel.size} bản nháp đã chọn?`)) return;
+      const body = {shop_id: state.shopId, ids: [...state.draftSel], delete: remove};
+      for (const [name, value] of Object.entries(state.bulk)) {
+        if (remove || value === '' || value == null) continue;
+        body[name] = ['price_value', 'stock', 'weight_g'].includes(name) ? Number(value) : value;
+      }
+      act(async () => {
+        await saveVisible();
+        const result = await json('/api/listings/drafts/bulk', 'POST', body);
+        state.message = remove ? `Đã xóa ${result.deleted} bản nháp.` : `Đã cập nhật ${result.updated} bản nháp.`;
+        if (remove) state.draftSel = new Set();
+      });
+    } else if (d.lcAll !== undefined) {
       state.selected = d.lcAll === '1' ? new Set(state.sources.filter(item => !item.draft_id).map(key)) : new Set();
       redraw();
     } else if (d.lcCreate !== undefined) {
