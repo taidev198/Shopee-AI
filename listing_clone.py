@@ -21,6 +21,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 MAX_IMAGES = 9
+DEFAULT_STOCK = 100  # Shopee rejects 0; the seller edits it per draft or in bulk
 MAX_DRAFTS_PER_REQUEST = 50
 IMAGE_HOST = re.compile(r'^https://[a-z0-9.-]+\.(?:susercontent\.com|shopee\.(?:vn|sg)|shopeemobile\.com)/', re.I)
 
@@ -302,7 +303,7 @@ def install(app, db):
                            observation['product_url'] or detail.get('url') or '',
                            (detail.get('name') or observation['name'])[:120], str(detail.get('description') or '')[:5000],
                            ' > '.join(str(value) for value in categories) or (observation['category'] or ''),
-                           price, 0, 0, json.dumps(_clean_images(detail.get('images'))),
+                           price, DEFAULT_STOCK, 0, json.dumps(_clean_images(detail.get('images'))),
                            json.dumps(_clean_pairs(detail.get('attributes'), ('name', 'value'))),
                            json.dumps(_clean_variants(detail.get('variants'))),
                            json.dumps(_clean_images(detail.get('description_images'))), _clean_video(detail.get('video')), 'draft', now, now))

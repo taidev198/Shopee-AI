@@ -81,6 +81,36 @@
     if (first) first.click();
     await pause(300);
   }
+  // Scroll every scrollable area to the bottom and back so lazily rendered sections (price, stock, shipping) exist.
+  async function scrollThrough() {
+    const areas = [document.scrollingElement, ...document.querySelectorAll('div, main, section')]
+      .filter(el => el && el.scrollHeight > el.clientHeight + 200 && /auto|scroll|visible/.test(getComputedStyle(el).overflowY) && el.clientHeight > 200);
+    for (const area of areas.slice(0, 6)) {
+      for (let step = 0; step < 12; step++) {
+        area.scrollTop = Math.min(area.scrollHeight, area.scrollTop + area.clientHeight * 0.8);
+        await pause(120);
+        if (area.scrollTop + area.clientHeight >= area.scrollHeight - 4) break;
+      }
+      area.scrollTop = 0;
+    }
+  }
+  // Last resort for a field: find the label text itself ("Giá", "Kho hàng"…) and take the first input after it.
+  function inputAfterLabel(pattern, used) {
+    const labels = [...document.querySelectorAll('div, span, label, p, h3, h4')].filter(el => {
+      if (!visible(el) || el.children.length > 3) return false;
+      const text = fold(el.innerText).replace(/[*:()?]/g, ' ').replace(/\s+/g, ' ').trim();
+      return text.length <= 40 && pattern.test(text);
+    });
+    for (const label of labels) {
+      for (let node = label, depth = 0; node && depth < 5; node = node.parentElement, depth++) {
+        const inputs = [...node.querySelectorAll(SELECTOR)].filter(input => visible(input) && !used.has(input) &&
+          (label.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING) && !input.contains(label));
+        if (inputs.length && node.querySelectorAll(SELECTOR).length <= 3) return inputs[0];
+      }
+    }
+    return null;
+  }
+  const LABEL_PATTERNS = {price: /^gia( ban)?(\b.*d)?$/, stock: /^kho hang\b/, weight: /^can nang\b/};
   // Heuristics for inputs whose label sits in a neighbouring element (price has a "đ" prefix, weight a "gr" suffix).
   function nearText(element) {
     let node = element.parentElement;
@@ -175,15 +205,17 @@
       if (list.length >= 3) break;
       await pause(500);
     }
+    await scrollThrough();
     await revealSections();
     list = controls();
+    if (!list.some(item => /gia|price/.test(fold(item.text)))) { await scrollThrough(); await pause(600); list = controls(); }
     const used = new Set();
     for (const [key, label, value, kinds] of [
       ['name', 'tên', draft.name, ['input', 'textarea', 'rich']], ['description', 'mô tả', draft.description, ['textarea', 'rich', 'input']],
       ['price', 'giá', draft.price || '', ['input']], ['stock', 'kho hàng', draft.stock || '', ['input']],
       ['weight', 'cân nặng', platform === 'tiktok' ? (draft.weight_g ? draft.weight_g / 1000 : '') : draft.weight_g || '', ['input']]]) {
-      if (value === '' || value === 0) continue;
-      const element = pick(list, key, kinds, used) || guess(list, key, used) || guessNumeric(list, key, used);
+      if (value === '' || value === 0) { if (key !== 'name' && key !== 'description') report.notes.push(`${label}: bản nháp để trống/0 nên không điền (sửa ở trang bản nháp).`); continue; }
+      const element = pick(list, key, kinds, used) || guess(list, key, used) || guessNumeric(list, key, used) || (LABEL_PATTERNS[key] ? inputAfterLabel(LABEL_PATTERNS[key], used) : null);
       if (element) { used.add(element); setValue(element, value); report.filled.push(label); await pause(150); } else report.missing.push(label);
     }
     for (const [label, pattern, nameMatch] of ATTRIBUTE_FIELDS) {
@@ -196,7 +228,8 @@
     result.textContent =
       `Đã điền: ${report.filled.join(', ') || 'không có'}.` + (report.missing.length ? ` Chưa tìm thấy ô: ${report.missing.join(', ')} — hãy dán bằng nút Sao chép.` : '') +
       (report.notes.length ? ' ' + report.notes.join(' ') : '') + ' Kiểm tra ngành hàng, thuộc tính rồi tự bấm Đăng.';
-    panel.dataset.diagnostics = JSON.stringify({url: location.pathname, found: list.length,
+    const labelsSeen = [...document.querySelectorAll('div, span, label, h3, h4')].filter(el => visible(el) && el.children.length === 0 && /^(\*\s*)?(gia|kho hang|can nang|thuong hieu)\b/.test(fold(el.innerText).trim())).slice(0, 12).map(el => el.innerText.trim());
+    panel.dataset.diagnostics = JSON.stringify({url: location.pathname, found: list.length, labelsSeen,
       controls: list.slice(0, 40).map(item => ({kind: item.kind, text: item.text.slice(0, 100), type: item.element.type || '', max: item.element.maxLength > 0 ? item.element.maxLength : 0}))}, null, 1);
     panel.querySelector('[data-diag]').hidden = false;
   }

@@ -128,7 +128,7 @@ def test_bulk_edit_applies_price_text_attribute_and_status_changes_to_selected_d
     assert one['price'] == 120000 and one['stock'] == 9 and one['weight_g'] == 250 and one['status'] == 'ready'
     assert one['name'] == '[HOT] Hộp đựng cơm 3 ngăn PRO' and one['description'].endswith('\nFreeship')
     assert {'name': 'Xuất xứ', 'value': 'Việt Nam'} in one['attributes'] and one['category'] == 'Nhà cửa > Bếp'
-    assert two['price'] == 50000 and two['stock'] == 0 and two['status'] == 'draft'
+    assert two['price'] == 50000 and two['stock'] == 100 and two['status'] == 'draft'
     assert bulk(all=True, price_mode='add', price_value=-1000).json()['updated'] == 2
     assert bulk(all=True, price_mode='set', price_value=77000).status_code == 200
     again = {row['id']: row for row in client.get('/api/listings/drafts', params={'shop_id': shop['id']}).json()}
