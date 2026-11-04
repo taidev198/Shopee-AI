@@ -17,3 +17,4 @@ a.btn.disabled{pointer-events:none;opacity:.5}
 .lc-bulk-grid label{display:grid;gap:4px;font-size:13px;font-weight:600}
 .lc-bulk-grid input,.lc-bulk-grid select{padding:7px 9px;border:1px solid var(--line,#ddd);border-radius:8px;font:inherit;background:transparent;color:inherit}
 .lc-pager{justify-content:center}
+.lc-tiktok{background:#111;border-color:#111}

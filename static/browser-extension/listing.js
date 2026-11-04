@@ -1,5 +1,21 @@
 // Draft handoff from MarketLens to the user's own Seller Centre (banhang.shopee.vn).
 export const SELLER_NEW_PRODUCT_URL = 'https://banhang.shopee.vn/portal/product/new';
+// Seller Centres a draft can be handed to (host + path prefix are also the content-script match).
+export const TARGETS = {
+  shopee: {label: 'Kênh Người Bán Shopee', url: SELLER_NEW_PRODUCT_URL, host: 'banhang.shopee.vn', path: '/portal/product/'},
+  tiktok: {label: 'TikTok Shop Seller Center', url: 'https://seller-vn.tiktok.com/product/create', host: 'seller-vn.tiktok.com', path: '/product/'},
+};
+export function validateTarget(value) {
+  const target = value === undefined || value === null || value === '' ? 'shopee' : String(value);
+  if (!Object.hasOwn(TARGETS, target)) throw new Error('Nền tảng đăng bán không được hỗ trợ.');
+  return target;
+}
+export function targetForUrl(value) {
+  try {
+    const url = new URL(value);
+    return Object.keys(TARGETS).find(key => url.protocol === 'https:' && url.hostname === TARGETS[key].host && url.pathname.startsWith(TARGETS[key].path)) || null;
+  } catch { return null; }
+}
 export const IMAGE_URL = /^https:\/\/[a-z0-9.-]+\.(?:susercontent\.com|shopee\.(?:vn|sg)|shopeemobile\.com)\//i;
 export const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 

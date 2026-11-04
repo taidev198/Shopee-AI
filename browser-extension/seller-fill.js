@@ -7,9 +7,9 @@
   const PATTERNS = {
     name: [/ten san pham/, /product name/],
     description: [/mo ta san pham/, /product description/, /mo ta/],
-    price: [/^\s*gia\b/, /\bgia\b.*(vnd|₫|d\b)/, /\bprice\b/],
+    price: [/gia ban/, /^\s*gia\b/, /\bgia\b.*(vnd|₫|d\b)/, /\bprice\b/],
     stock: [/kho hang/, /\bstock\b/, /so luong/],
-    weight: [/can nang/, /weight/],
+    weight: [/can nang/, /trong luong/, /weight/],
   };
   const visible = element => !!(element && element.getClientRects().length);
   const SELECTOR = 'input:not([type=file]):not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=search]), textarea, [contenteditable="true"], [role="textbox"]';
@@ -80,7 +80,7 @@
     input.dispatchEvent(new Event('change', {bubbles: true}));
     report.filled.push(`${transfer.files.length} ảnh`);
   }
-  async function fill(draft, panel) {
+  async function fill(draft, panel, platform) {
     const report = {filled: [], missing: [], notes: []};
     const result = panel.querySelector('[data-result]');
     result.textContent = 'Đang chờ biểu mẫu tải…';
@@ -94,7 +94,7 @@
     for (const [key, label, value, kinds] of [
       ['name', 'tên', draft.name, ['input', 'textarea', 'rich']], ['description', 'mô tả', draft.description, ['textarea', 'rich', 'input']],
       ['price', 'giá', draft.price || '', ['input']], ['stock', 'kho hàng', draft.stock || '', ['input']],
-      ['weight', 'cân nặng', draft.weight_g || '', ['input']]]) {
+      ['weight', 'cân nặng', platform === 'tiktok' ? (draft.weight_g ? draft.weight_g / 1000 : '') : draft.weight_g || '', ['input']]]) {
       if (value === '' || value === 0) continue;
       const element = pick(list, key, kinds, used) || guess(list, key, used);
       if (element) { used.add(element); setValue(element, value); report.filled.push(label); await pause(150); } else report.missing.push(label);
@@ -109,12 +109,12 @@
     panel.querySelector('[data-diag]').hidden = false;
   }
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]));
-  function mount(draft) {
+  function mount(draft, platform) {
     const panel = document.createElement('div');
     panel.setAttribute('style', 'position:fixed;right:16px;bottom:16px;z-index:2147483647;width:340px;max-height:80vh;overflow:auto;background:#fff;color:#222;border:2px solid #ee4d2d;border-radius:10px;padding:12px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.25)');
     const rows = [['Tên', draft.name], ['Giá', draft.price || ''], ['Kho hàng', draft.stock || ''], ['Ngành hàng', draft.category], ['Mô tả', draft.description]]
       .filter(([, value]) => value !== '' && value !== undefined);
-    panel.innerHTML = `<strong style="color:#ee4d2d">MarketLens · bản nháp đăng bán</strong>
+    panel.innerHTML = `<strong style="color:#ee4d2d">MarketLens · bản nháp đăng ${platform === 'tiktok' ? 'TikTok Shop' : 'Shopee'}</strong>
       <div style="margin:6px 0">${esc(draft.name)}</div>
       <button data-fill style="background:#ee4d2d;color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer">Tự điền biểu mẫu</button>
       <button data-diag hidden style="margin-left:6px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:6px 10px;cursor:pointer">Sao chép chẩn đoán</button>
@@ -128,10 +128,13 @@
       if (!target) return;
       if (target.dataset.close !== undefined) panel.remove();
       else if (target.dataset.diag !== undefined) navigator.clipboard?.writeText(panel.dataset.diagnostics || '');
-      else if (target.dataset.fill !== undefined) { target.disabled = true; fill(draft, panel).finally(() => { target.disabled = false; }); }
+      else if (target.dataset.fill !== undefined) { target.disabled = true; fill(draft, panel, platform).finally(() => { target.disabled = false; }); }
       else if (target.dataset.copy !== undefined) navigator.clipboard?.writeText(String(rows[Number(target.dataset.copy)][1]));
     });
     document.body.append(panel);
   }
-  chrome.runtime.sendMessage({source: 'marketlens-seller', action: 'draft'}).then(reply => { if (reply?.ok && reply.draft) mount(reply.draft); }).catch(() => {});
+  const here = location.hostname === 'seller-vn.tiktok.com' ? 'tiktok' : 'shopee';
+  chrome.runtime.sendMessage({source: 'marketlens-seller', action: 'draft'}).then(reply => {
+    if (reply?.ok && reply.draft && (reply.draft.target || 'shopee') === here) mount(reply.draft, here);
+  }).catch(() => {});
 })();

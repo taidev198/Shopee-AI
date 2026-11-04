@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MarketLens — Đọc sản phẩm Shopee",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Đọc thẻ sản phẩm công khai trong Chrome khi bạn bấm Quét sản phẩm tại MarketLens trên máy này.",
   "permissions": [
     "scripting",
@@ -14,7 +14,8 @@
     "http://localhost:8000/*",
     "https://shopee-ai.onrender.com/*",
     "https://banhang.shopee.vn/*",
-    "https://*.susercontent.com/*"
+    "https://*.susercontent.com/*",
+    "https://seller-vn.tiktok.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -35,7 +36,8 @@
     },
     {
       "matches": [
-        "https://banhang.shopee.vn/portal/product/*"
+        "https://banhang.shopee.vn/portal/product/*",
+        "https://seller-vn.tiktok.com/product/*"
       ],
       "js": [
         "seller-fill.js"

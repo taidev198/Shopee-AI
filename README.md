@@ -284,3 +284,7 @@ Menu **Sao chép sản phẩm** (site User) lấy sản phẩm của shop khác 
 2. **Đăng bằng tiện ích Chrome** (tiện ích ≥ 1.4.0) – mở `banhang.shopee.vn/portal/product/new`, hiện khung MarketLens để tự điền tên, mô tả, giá, kho, cân nặng và tải ảnh. Tiện ích không tự bấm Đăng; người bán kiểm tra rồi tự đăng. Giao diện Kênh Người Bán do Shopee đổi thường xuyên nên ô nào không nhận ra sẽ được báo để dán bằng nút Sao chép.
 
 Ảnh và mô tả thuộc về shop gốc: chỉ đăng khi bạn có quyền sử dụng.
+
+### Đăng thêm lên TikTok Shop
+
+Mỗi bản nháp có thêm nút **Đăng TikTok Shop (tiện ích)** và file Mass Upload riêng cho TikTok (`?platform=tiktok`, cân nặng đổi sang kg). Tiện ích ≥ 1.5.0 mở `seller-vn.tiktok.com/product/create` và dùng cùng bộ tự điền như Shopee (khung MarketLens hiện ở góc phải; không tự bấm Đăng). Đường dẫn và nhãn ô của TikTok Seller Center chưa được kiểm chứng trên tài khoản thật; nếu thiếu ô, dùng nút **Sao chép chẩn đoán** để gửi cấu trúc form.

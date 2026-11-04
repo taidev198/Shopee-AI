@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
-import {validateListingDraft} from '../listing.js';
+import {validateListingDraft, validateTarget, targetForUrl, TARGETS} from '../listing.js';
 
 const IMG = 'https://down-vn.img.susercontent.com/file/abc';
 
@@ -38,16 +38,18 @@ test('listing request travels through the content bridge with its draft', async 
   const context = vm.createContext({window, chrome, location: window.location, crypto: {randomUUID}, setTimeout, clearTimeout, Map, Set, Error});
   vm.runInContext(await readFile(new URL('../bridge.js', import.meta.url), 'utf8'), context);
   vm.runInContext(await readFile(new URL('../../static/chrome-client.js', import.meta.url), 'utf8'), context);
-  const result = await window.MarketLensChrome.listing({name: 'A'});
+  const result = await window.MarketLensChrome.listing({name: 'A'}, 'tiktok');
   assert.deepEqual(result, {opened: true});
   assert.equal(sent.action, 'listing');
   assert.deepEqual(sent.draft, {name: 'A'});
+  assert.equal(sent.target, 'tiktok');
 });
 
 test('manifest limits Seller Centre access to the add-product pages', async () => {
   const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
   const seller = manifest.content_scripts.find(item => item.js.includes('seller-fill.js'));
-  assert.deepEqual(seller.matches, ['https://banhang.shopee.vn/portal/product/*']);
+  assert.deepEqual(seller.matches, ['https://banhang.shopee.vn/portal/product/*', 'https://seller-vn.tiktok.com/product/*']);
+  assert.ok(manifest.host_permissions.includes('https://seller-vn.tiktok.com/*'));
   assert.ok(manifest.permissions.includes('storage'));
 });
 
@@ -58,4 +60,17 @@ test('copy screen embeds the shared Chrome shop scan as market data with details
   assert.match(source, /name="browser_mode" value="chrome"/);
   assert.equal((source.match(/name="read_details"/g) || []).length, 1);
   for (const id of ['crawlFeedback', 'crawlDetailProgress', 'stopCrawlDetails']) assert.ok(source.includes(`id="${id}"`));
+});
+
+test('targets are whitelisted and recognised by seller-centre url', () => {
+  assert.equal(validateTarget(undefined), 'shopee');
+  assert.equal(validateTarget('tiktok'), 'tiktok');
+  assert.throws(() => validateTarget('lazada'), /không được hỗ trợ/);
+  assert.throws(() => validateTarget('__proto__'), /không được hỗ trợ/);
+  assert.equal(targetForUrl('https://seller-vn.tiktok.com/product/create'), 'tiktok');
+  assert.equal(targetForUrl('https://banhang.shopee.vn/portal/product/new'), 'shopee');
+  assert.equal(targetForUrl('https://seller-vn.tiktok.com.evil.example/product/create'), null);
+  assert.equal(targetForUrl('http://banhang.shopee.vn/portal/product/new'), null);
+  assert.equal(targetForUrl('https://banhang.shopee.vn/portal/order'), null);
+  assert.ok(TARGETS.tiktok.url.startsWith('https://seller-vn.tiktok.com/'));
 });

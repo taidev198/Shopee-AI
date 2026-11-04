@@ -145,3 +145,16 @@ def test_user_bulk_edit_is_limited_to_assigned_shop(clone):
     create(user, shop['id'])
     assert user.post('/api/listings/drafts/bulk', json={'shop_id': other['id'], 'all': True, 'stock': 1}).status_code == 403
     assert user.post('/api/listings/drafts/bulk', json={'shop_id': shop['id'], 'all': True, 'stock': 1}).status_code == 200
+
+
+def test_tiktok_export_uses_kilograms_and_its_own_guide(clone):
+    _, client, shop = clone
+    draft = create(client, shop['id']).json()['created'][0]
+    client.put(f"/api/listings/drafts/{draft['id']}", params={'shop_id': shop['id']}, json={'weight_g': 450, 'stock': 3})
+    response = client.get('/api/listings/export', params={'shop_id': shop['id'], 'platform': 'tiktok'})
+    assert response.status_code == 200 and 'tiktok' in response.headers['content-disposition']
+    book = load_workbook(io.BytesIO(response.content))
+    rows = list(book['Sản phẩm'].iter_rows(values_only=True))
+    assert rows[0][10] == 'Cân nặng (kg)' and rows[1][10] == 0.45 and rows[1][9] == 3
+    assert 'TikTok Shop' in book['Hướng dẫn']['A1'].value
+    assert client.get('/api/listings/export', params={'shop_id': shop['id'], 'platform': 'other'}).status_code == 422

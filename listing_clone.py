@@ -298,7 +298,7 @@ def install(app, db):
         return {'deleted': draft_id}
 
     @router.get('/export')
-    def export(shop_id: str, ids: str = ''):
+    def export(shop_id: str, ids: str = '', platform: Literal['shopee', 'tiktok'] = 'shopee'):
         wanted = [value for value in ids.split(',') if value]
         with db() as c:
             require_shop(c, shop_id)
@@ -308,8 +308,8 @@ def install(app, db):
             rows = [row for row in rows if row['id'] in set(wanted)]
         if not rows:
             raise HTTPException(404, 'Chưa có bản nháp nào để xuất.')
-        return Response(build_workbook(rows), media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                        headers={'Content-Disposition': 'attachment; filename="marketlens-listing-drafts.xlsx"'})
+        return Response(build_workbook(rows, platform), media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        headers={'Content-Disposition': f'attachment; filename="marketlens-{platform}-listing-drafts.xlsx"'})
 
     app.include_router(router)
 
@@ -366,27 +366,40 @@ HEADERS = ['Ngành hàng', 'Tên sản phẩm', 'Mô tả sản phẩm', 'SKU s�
           [f'Hình ảnh sản phẩm {n}' for n in range(1, 9)] + ['Thuộc tính', 'Link sản phẩm gốc']
 
 
-def build_workbook(drafts):
+TIKTOK_HEADERS = ['Danh mục', 'Tên sản phẩm', 'Mô tả sản phẩm', 'Seller SKU', 'Tên phân loại 1', 'Giá trị phân loại 1',
+                  'Tên phân loại 2', 'Giá trị phân loại 2', 'Giá bán (VND)', 'Số lượng', 'Cân nặng (kg)', 'Ảnh chính'] + \
+                 [f'Ảnh {n}' for n in range(2, 10)] + ['Thuộc tính', 'Link sản phẩm gốc']
+
+GUIDES = {
+    'shopee': ('Tệp này là bảng dữ liệu để đăng sản phẩm lên Kênh Người Bán (banhang.shopee.vn).',
+               'Shopee dùng mẫu Đăng hàng loạt khác nhau theo ngành hàng: vào Sản phẩm > Thêm nhiều sản phẩm, tải mẫu của ngành hàng, rồi sao chép các cột tương ứng từ sheet "Sản phẩm" sang mẫu đó.'),
+    'tiktok': ('Tệp này là bảng dữ liệu để đăng sản phẩm lên TikTok Shop Seller Center.',
+               'TikTok Shop dùng mẫu nhập hàng loạt theo danh mục: vào Quản lý sản phẩm > Thêm hàng loạt / Nhập sản phẩm, tải mẫu của danh mục, rồi sao chép các cột tương ứng từ sheet "Sản phẩm" sang mẫu đó. Cân nặng tính bằng kg.'),
+}
+
+
+def build_workbook(drafts, platform='shopee'):
+    tiktok = platform == 'tiktok'
     wb = Workbook()
     ws = wb.active
     ws.title = 'Sản phẩm'
-    ws.append(HEADERS)
+    ws.append(TIKTOK_HEADERS if tiktok else HEADERS)
     for cell in ws[1]:
         cell.font = Font(bold=True, color='FFFFFF')
-        cell.fill = PatternFill('solid', fgColor='EE4D2D')
+        cell.fill = PatternFill('solid', fgColor='111111' if tiktok else 'EE4D2D')
     for draft in drafts:
         images = draft['images']
         attributes = '; '.join(f"{item['name']}: {item['value']}" for item in draft['attributes'])
+        weight = (round(draft['weight_g'] / 1000, 3) if draft['weight_g'] else None) if tiktok else (draft['weight_g'] or None)
         for g1, o1, g2, o2 in variant_rows(draft):
             ws.append([draft['category'], draft['name'], draft['description'], f"ML-{draft['source_sku']}"[:100], g1, o1, g2, o2,
-                       draft['price'], draft['stock'], draft['weight_g'] or None, images[0] if images else '',
+                       draft['price'], draft['stock'], weight, images[0] if images else '',
                        *[(images[n] if len(images) > n else '') for n in range(1, 9)], attributes, draft['source_url']])
     for column, width in zip('ABCDEFGHIJKL', (28, 40, 60, 18, 18, 18, 18, 18, 14, 10, 12, 50)):
         ws.column_dimensions[column].width = width
     guide = wb.create_sheet('Hướng dẫn')
-    for line in ('Tệp này là bảng dữ liệu để đăng sản phẩm lên Kênh Người Bán (banhang.shopee.vn).',
-                 'Shopee dùng mẫu Đăng hàng loạt khác nhau theo ngành hàng: vào Sản phẩm > Thêm nhiều sản phẩm, tải mẫu của ngành hàng, rồi sao chép các cột tương ứng từ sheet "Sản phẩm" sang mẫu đó.',
-                 'Kiểm tra lại ngành hàng, thuộc tính bắt buộc, cân nặng, kích thước và giá trước khi tải lên.',
+    for line in (*GUIDES[platform],
+                 'Kiểm tra lại danh mục, thuộc tính bắt buộc, cân nặng, kích thước và giá trước khi tải lên.',
                  'Ảnh và mô tả lấy từ shop khác: chỉ đăng khi bạn có quyền sử dụng; nội dung của người khác có thể bị báo vi phạm sở hữu trí tuệ.'):
         guide.append([line])
     guide.column_dimensions['A'].width = 140

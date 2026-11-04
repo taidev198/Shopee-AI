@@ -16,7 +16,7 @@
       const response = await chrome.runtime.sendMessage({
         source: 'marketlens-bridge', action: message.action,
         requestId: message.requestId, url: message.url,
-        query: message.query, ownShopUrl: message.ownShopUrl, draft: message.draft,
+        query: message.query, ownShopUrl: message.ownShopUrl, draft: message.draft, target: message.target,
       });
       if (!response || typeof response.ok !== 'boolean') {
         throw new Error('Tiện ích không trả kết quả. Hãy tải lại tiện ích và trang MarketLens.');

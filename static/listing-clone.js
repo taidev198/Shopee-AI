@@ -67,7 +67,8 @@
       ${attributes ? `<p class="muted"><b>Thuộc tính:</b> ${attributes}</p>` : ''}${variants ? `<p class="muted"><b>Phân loại:</b> ${variants}</p>` : ''}
       <div class="lc-row"><button class="btn btn-soft btn-sm" data-lc-save="${esc(draft.id)}">Lưu</button>
         <button class="btn btn-soft btn-sm" data-lc-status="${esc(draft.id)}:${draft.status === 'ready' ? 'draft' : 'ready'}">${draft.status === 'ready' ? 'Bỏ đánh dấu' : 'Đánh dấu sẵn sàng'}</button>
-        <button class="btn btn-primary btn-sm" data-lc-post="${esc(draft.id)}">Đăng bằng tiện ích Chrome</button>
+        <button class="btn btn-primary btn-sm" data-lc-post="${esc(draft.id)}:shopee">Đăng Shopee (tiện ích)</button>
+        <button class="btn btn-primary btn-sm lc-tiktok" data-lc-post="${esc(draft.id)}:tiktok">Đăng TikTok Shop (tiện ích)</button>
         <button class="btn btn-white btn-sm" data-lc-delete="${esc(draft.id)}">Xóa</button></div></article>`;
   }
 
@@ -103,9 +104,9 @@
     const visible = state.drafts.slice((state.page - 1) * state.pageSize, state.page * state.pageSize);
     return `<section class="panel"><div class="panel-head"><div><h3>3. Bản nháp đăng bán (${state.drafts.length})</h3>
       <p class="panel-sub">Chỉnh lại tên, giá, mô tả cho phù hợp shop của bạn rồi chọn một cách đăng.</p></div>
-      <div class="lc-row"><a class="btn btn-soft btn-sm ${state.drafts.length ? '' : 'disabled'}" href="/api/listings/export?${esc(query({}).toString())}" data-lc-export>Tải file Mass Upload (.xlsx)</a>
-      ${count ? `<a class="btn btn-soft btn-sm" href="/api/listings/export?${esc(query({ids: [...state.draftSel].join(',')}).toString())}">Chỉ ${count} bản đã chọn</a>` : ''}
-      ${ready ? `<a class="btn btn-soft btn-sm" href="/api/listings/export?${esc(query({ids: state.drafts.filter(item => item.status === 'ready').map(item => item.id).join(',')}).toString())}">Chỉ ${ready} bản sẵn sàng</a>` : ''}</div></div>
+      <div class="lc-row">${[['shopee', 'Shopee'], ['tiktok', 'TikTok Shop']].map(([platform, name]) => `<a class="btn btn-soft btn-sm ${state.drafts.length ? '' : 'disabled'}" href="/api/listings/export?${esc(query({platform}).toString())}" data-lc-export="${platform}">Tải file ${name} (.xlsx)</a>`).join('')}
+      ${count ? [['shopee', 'Shopee'], ['tiktok', 'TikTok']].map(([platform, name]) => `<a class="btn btn-soft btn-sm" href="/api/listings/export?${esc(query({platform, ids: [...state.draftSel].join(',')}).toString())}">${count} bản đã chọn → ${name}</a>`).join('') : ''}
+      ${ready ? [['shopee', 'Shopee'], ['tiktok', 'TikTok']].map(([platform, name]) => `<a class="btn btn-soft btn-sm" href="/api/listings/export?${esc(query({platform, ids: state.drafts.filter(item => item.status === 'ready').map(item => item.id).join(',')}).toString())}">${ready} bản sẵn sàng → ${name}</a>`).join('') : ''}</div></div>
       ${state.drafts.length ? `<div class="lc-row"><button type="button" class="btn btn-soft btn-sm" data-lc-dall="1">Chọn tất cả ${state.drafts.length} bản</button><button type="button" class="btn btn-soft btn-sm" data-lc-dall="page">Chọn trang này</button><button type="button" class="btn btn-soft btn-sm" data-lc-dall="0">Bỏ chọn tất cả</button><small>Đã chọn ${count}</small></div>${bulkForm(count)}${pager()}` : ''}
       ${visible.map(draftCard).join('') || '<div class="instructions">Chưa có bản nháp. Chọn sản phẩm ở bước 2.</div>'}${state.drafts.length > state.pageSize ? pager() : ''}</section>`;
   }
@@ -225,12 +226,14 @@
       const [id, index] = d.lcImg.split(':'); const draft = draftById(id);
       act(() => json(`/api/listings/drafts/${encodeURIComponent(id)}?` + query(), 'PUT', {images: list(draft?.images).filter((_, position) => position !== Number(index))}));
     } else if (d.lcPost) {
+      const [postId, platform] = d.lcPost.split(':');
+      const name = platform === 'tiktok' ? 'TikTok Shop Seller Center' : 'Kênh Người Bán Shopee';
       act(async () => {
-        if (!window.MarketLensChrome?.listing) throw new Error('Chưa kết nối tiện ích MarketLens. Cài hoặc cập nhật tiện ích (phiên bản 1.4.0 trở lên) rồi tải lại trang.');
-        await save(d.lcPost);
-        const fresh = (await api('/api/listings/drafts?' + query())).find(item => item.id === d.lcPost);
-        await window.MarketLensChrome.listing(fresh);
-        state.message = 'Đã mở Kênh Người Bán. Đăng nhập nếu cần, rồi bấm “Tự điền biểu mẫu” trong khung MarketLens ở góc phải; kiểm tra lại trước khi bấm Đăng.';
+        if (!window.MarketLensChrome?.listing) throw new Error('Chưa kết nối tiện ích MarketLens. Cài hoặc cập nhật tiện ích (phiên bản 1.5.0 trở lên) rồi tải lại trang.');
+        await save(postId);
+        const fresh = (await api('/api/listings/drafts?' + query())).find(item => item.id === postId);
+        await window.MarketLensChrome.listing(fresh, platform);
+        state.message = `Đã mở ${name}. Đăng nhập nếu cần, rồi bấm “Tự điền biểu mẫu” trong khung MarketLens ở góc phải; kiểm tra lại trước khi bấm Đăng.`;
       });
     }
   });

@@ -1,7 +1,7 @@
 import {validateCategoryUrl, inspectCategoryPage} from './category.js';
 import {inspectShopPage, isAllowedAppUrl, validateShopUrl} from './collector.js';
 import {inspectProductPage, validateProductUrl} from './product-detail.js';
-import {validateListingDraft, SELLER_NEW_PRODUCT_URL, IMAGE_URL, MAX_IMAGE_BYTES} from './listing.js';
+import {validateListingDraft, validateTarget, targetForUrl, TARGETS, IMAGE_URL, MAX_IMAGE_BYTES} from './listing.js';
 import {inspectSearchPage, inspectProductSeller, inspectShopProfile, validateDiscoveryQuery, validateSellerLink} from './discovery.js';
 
 const MAX_PAGES = 5;
@@ -497,7 +497,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
   if (message.action === 'listing') {
-    startListing(message.draft).then(result => sendResponse({ok: true, result}),
+    startListing(message.draft, message.target).then(result => sendResponse({ok: true, result}),
       error => sendResponse({ok: false, error: error.message || String(error)}));
     return true;
   }
@@ -518,19 +518,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // --- Seller Centre handoff: the draft waits in session storage until the user's own
 // banhang.shopee.vn tab asks for it; images are fetched here (host permission), not in the page.
-async function startListing(value) {
-  const draft = validateListingDraft(value);
+async function startListing(value, targetValue) {
+  const target = validateTarget(targetValue);
+  const draft = {...validateListingDraft(value), target};
   await chrome.storage.session.set({listingDraft: draft});
-  await chrome.tabs.create({url: SELLER_NEW_PRODUCT_URL});
-  return {opened: true, images: draft.images.length};
+  await chrome.tabs.create({url: TARGETS[target].url});
+  return {opened: true, images: draft.images.length, target};
 }
 
-function isSellerCentreUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && url.hostname === 'banhang.shopee.vn' && url.pathname.startsWith('/portal/product/');
-  } catch { return false; }
-}
+const isSellerCentreUrl = value => targetForUrl(value) !== null;
 
 function toBase64(bytes) {
   let binary = '';
