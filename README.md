@@ -261,7 +261,7 @@ URL quick tunnel đổi mỗi lần chạy lại; muốn URL cố định hãy d
 
 ## Tài khoản admin lần deploy đầu và nhật ký hoạt động
 
-- Đặt `ADMIN_USERNAME` (3–80 ký tự, không khoảng trắng) và `ADMIN_PASSWORD` (≥ 12 ký tự) trên Render: ở lần chạy đầu, khi DB chưa có tài khoản nào, app tạo sẵn tài khoản **System** này. Các lần sau biến này bị bỏ qua (không ghi đè, không đổi mật khẩu). Không đặt biến thì mở `/setup` để tự tạo.
+- Đặt `ADMIN_USERNAME` (3–80 ký tự, không khoảng trắng) và `ADMIN_PASSWORD` (≥ 12 ký tự) trên Render: ở lần chạy đầu, khi DB chưa có tài khoản nào, app tạo sẵn tài khoản **System** này. Các lần sau biến này bị bỏ qua (không ghi đè, không đổi mật khẩu). Trên Render, nếu không đặt `ADMIN_PASSWORD`, app tự sinh mật khẩu ngẫu nhiên cho tài khoản `admin` và in **một lần** trong log (`ĐÃ TẠO TÀI KHOẢN ADMIN…`); đăng nhập rồi đổi ngay ở System → Tài khoản & hoạt động → *Đổi mật khẩu của tôi*. Tài khoản luôn được lưu trong DB (mật khẩu băm PBKDF2), mọi thao tác của admin cũng ghi vào nhật ký như User. Chạy máy cá nhân không đặt biến thì mở `/setup`.
 - System → **Tài khoản & hoạt động**: danh sách tài khoản (đăng nhập gần nhất, số thao tác 30 ngày), tạo User, gán shop, khóa/mở, đặt lại mật khẩu, và **nhật ký hoạt động** (đăng nhập, đăng ký, thêm shop, thu thập, AI, đổi quyền…; lọc theo tài khoản/từ khóa, lưu 90 ngày). Mật khẩu không bao giờ được ghi vào nhật ký.
 
 ## Lưu dữ liệu trên Neon Postgres (DB chính)

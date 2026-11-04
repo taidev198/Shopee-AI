@@ -82,6 +82,11 @@ class NewPassword(StrictModel):
     password: str = Field(min_length=12, max_length=256)
 
 
+class PasswordChange(StrictModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
 class ShopAssignments(StrictModel):
     shop_ids: list[str] = Field(max_length=1000)
 
@@ -164,24 +169,49 @@ class AuthService:
         return last, login, counts
 
     def seed_admin(self):
-        """First deploy: create the System account from ADMIN_USERNAME/ADMIN_PASSWORD if no account exists."""
+        """First deploy: store a System account in the database (hashed) when none exists.
+
+        Credentials come from ADMIN_USERNAME/ADMIN_PASSWORD. On Render (RENDER set) or with
+        MARKETLENS_SEED_ADMIN=1, a missing password is generated once and printed in the server log.
+        The environment is only read while the table is empty: afterwards the DB is the single source.
+        """
+        import logging
+        log = logging.getLogger('marketlens.auth')
+        if not self.setup_required():
+            return False
         username = os.environ.get('ADMIN_USERNAME', '').strip()
         password = os.environ.get('ADMIN_PASSWORD', '')
-        if not username or not password:
-            return False
+        generated = False
+        if not password:
+            if not (os.environ.get('RENDER') or os.environ.get('MARKETLENS_SEED_ADMIN') == '1'):
+                return False
+            password, generated = secrets.token_urlsafe(15), True
         try:
-            payload = Credentials(username=username, password=password)
+            payload = Credentials(username=username or 'admin', password=password)
         except ValueError:
-            import logging
-            logging.getLogger('marketlens.auth').warning(
-                'ADMIN_USERNAME/ADMIN_PASSWORD không hợp lệ (tên 3–80 ký tự không khoảng trắng, mật khẩu 12–256 ký tự); bỏ qua seed.')
+            log.warning('ADMIN_USERNAME/ADMIN_PASSWORD không hợp lệ (tên 3–80 ký tự không khoảng trắng, mật khẩu 12–256 ký tự); bỏ qua seed.')
             return False
         try:
             self.setup(payload)
         except HTTPException:
             return False  # an account already exists: never overwrite
-        self.audit('Khởi tạo tài khoản System (seed)', username=payload.username, detail='ADMIN_USERNAME')
+        self.audit('Khởi tạo tài khoản System (seed)', username=payload.username,
+                   detail='mật khẩu tự sinh' if generated else 'từ ADMIN_PASSWORD')
+        if generated:
+            log.warning('ĐÃ TẠO TÀI KHOẢN ADMIN: tên đăng nhập "%s", mật khẩu "%s" (chỉ hiển thị một lần, hãy đổi ngay sau khi đăng nhập).',
+                        payload.username, password)
+        else:
+            log.warning('Đã tạo tài khoản System "%s" từ biến môi trường.', payload.username)
         return True
+
+    def change_password(self, account, current, new):
+        with self.db() as c:
+            c.execute('BEGIN IMMEDIATE')
+            row = c.execute('SELECT * FROM auth_accounts WHERE id=?', (account['id'],)).fetchone()
+            if not row or not password_matches(current, row['password_hash']):
+                raise HTTPException(403, 'Mật khẩu hiện tại không đúng.')
+            c.execute('UPDATE auth_accounts SET password_hash=? WHERE id=?', (password_hash(new), account['id']))
+        return {'ok': True}
 
     def reset_password(self, account_id, password):
         with self.db() as c:
@@ -241,6 +271,7 @@ class AuthService:
             c.execute('INSERT INTO auth_accounts VALUES(?,?,?,?,?,1,?)',
                       (account_id, payload.username, payload.username.casefold(), password_hash(payload.password), 'system', now()))
             account = dict(c.execute('SELECT * FROM auth_accounts WHERE id=?', (account_id,)).fetchone())
+        self.audit('Khởi tạo tài khoản System', account, status=200)
         return self.session(account)
 
     def register(self, payload, request):
@@ -369,6 +400,8 @@ def same_local_origin(scope):
 def user_permission(path, method):
     if path == '/api/auth/logout':
         return 'global' if method == 'POST' else None
+    if path == '/api/auth/me/password':
+        return 'global' if method == 'PUT' else None
     if path == '/api/shops':
         return 'global' if method in ('GET', 'POST') else None
     if path == '/api/seller/ai/config':
@@ -397,6 +430,7 @@ def user_permission(path, method):
 
 AUDIT_LABELS = (
     ('POST', r'/api/auth/logout', 'Đăng xuất'),
+    ('PUT', r'/api/auth/me/password', 'Đổi mật khẩu của chính mình'),
     ('POST', r'/api/auth/accounts', 'Tạo tài khoản User'),
     ('PUT', r'/api/auth/accounts/[^/]+/shops', 'Gán quyền shop cho User'),
     ('PUT', r'/api/auth/accounts/[^/]+/password', 'Đặt lại mật khẩu User'),
@@ -589,6 +623,10 @@ def install(app, db):
     @router.post('/accounts')
     def create(payload: NewUser):
         return service.create_user(payload)
+
+    @router.put('/me/password')
+    def my_password(payload: PasswordChange, request: Request):
+        return service.change_password(request.state.auth, payload.current_password, payload.new_password)
 
     @router.get('/audit')
     def audit(limit: int = 50, offset: int = 0, account_id: str = '', q: str = ''):

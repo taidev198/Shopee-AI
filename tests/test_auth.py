@@ -393,3 +393,28 @@ def test_invalid_seed_credentials_are_ignored(tmp_path,monkeypatch):
     import app
     app=importlib.reload(app)
     assert app.app.state.auth.setup_required()
+
+
+def test_admin_is_generated_once_on_render_and_actions_are_logged(tmp_path,monkeypatch,caplog):
+    monkeypatch.setenv('MARKET_DB',str(tmp_path/'render.db'))
+    monkeypatch.delenv('ADMIN_USERNAME',raising=False);monkeypatch.delenv('ADMIN_PASSWORD',raising=False)
+    monkeypatch.setenv('RENDER','true')
+    import app
+    with caplog.at_level('WARNING'):
+        app=importlib.reload(app)
+    message=next(r.getMessage() for r in caplog.records if 'ĐÃ TẠO TÀI KHOẢN ADMIN' in r.getMessage())
+    password=message.split('mật khẩu "')[1].split('"')[0]
+    assert not app.app.state.auth.setup_required()
+    admin=login(app,'admin',password)
+    assert admin.post('/api/shops',json={'url':'https://shopee.vn/admin_made'}).status_code==200
+    new='Changed-Admin-Pass-2026!'
+    assert admin.put('/api/auth/me/password',json={'current_password':'wrong-password-123','new_password':new}).status_code==403
+    assert admin.put('/api/auth/me/password',json={'current_password':password,'new_password':new}).status_code==200
+    assert anonymous(app).post('/api/auth/login',json={'username':'admin','password':new}).status_code==200
+    actions={row['action'] for row in admin.get('/api/auth/audit').json()['events'] if row['username']=='admin'}
+    assert {'Thêm shop','Đổi mật khẩu của chính mình','Đăng nhập'} <= actions
+    # Restart: the stored account is kept and no new password is generated.
+    caplog.clear()
+    app=importlib.reload(app)
+    assert not any('ĐÃ TẠO TÀI KHOẢN ADMIN' in r.getMessage() for r in caplog.records)
+    assert anonymous(app).post('/api/auth/login',json={'username':'admin','password':new}).status_code==200
