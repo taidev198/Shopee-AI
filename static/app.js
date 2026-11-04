@@ -350,7 +350,7 @@ async function refreshCrawlerLists(){
  S.crawlerRefreshing=true;
  const shopId=S.shopId;
  const view=S.view;
- try{let [jobs, schedules]=await Promise.all([api(`/api/crawl/jobs?shop_id=${encodeURIComponent(shopId)}&all_rows=true`),view==='crawler'?api(`/api/crawl/schedules?shop_id=${encodeURIComponent(shopId)}`):Promise.resolve([])]);
+ try{let [jobs, schedules]=await Promise.all([api(`/api/crawl/jobs?shop_id=${encodeURIComponent(shopId)}&all_rows=true`),view==='crawler'&&canCollect()?api(`/api/crawl/schedules?shop_id=${encodeURIComponent(shopId)}`):Promise.resolve([])]);
  if(S.view!==view||S.shopId!==shopId)return;
  const j=$('crawlJobs'),sc=$('crawlSchedules');
  if(j)j.innerHTML=jobs.length?`<div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>URL</th><th>VAI TRÒ</th><th>TRẠNG THÁI</th><th>SẢN PHẨM</th><th>CHI TIẾT</th><th>LỖI / GHI CHÚ</th></tr></thead><tbody>${jobs.map(x=>`<tr data-pagination-id="${esc(x.id)}"><td class="product-name">${esc(x.target_url)}</td><td>${badge(x.role)}</td><td>${badge(x.status)}</td><td>${num(x.rows_imported)}</td><td>${x.read_details?`${num(x.detail_completed||0)}/${num(x.detail_total||0)}${x.detail_failed?` · lỗi ${num(x.detail_failed)}`:''}`:'—'}</td><td>${esc(x.error||'—')}</td></tr>`).join('')}</tbody></table></div></div>`:empty('◉','Chưa thực thi crawler','Nhập URL shop và bấm Quét một lần.');
