@@ -178,12 +178,16 @@ class AuthService:
         import logging
         log = logging.getLogger('marketlens.auth')
         if not self.setup_required():
+            with self.db() as c:
+                n = c.execute('SELECT COUNT(*) FROM auth_accounts').fetchone()[0]
+            log.warning('Seed admin: DB đã có %d tài khoản nên không tạo admin mới (chỉ seed khi bảng auth_accounts trống).', n)
             return False
         username = os.environ.get('ADMIN_USERNAME', '').strip()
         password = os.environ.get('ADMIN_PASSWORD', '')
         generated = False
         if not password:
             if not (os.environ.get('RENDER') or os.environ.get('MARKETLENS_SEED_ADMIN') == '1'):
+                log.warning('Seed admin: chưa có tài khoản nào; mở /setup để tạo System hoặc đặt ADMIN_USERNAME/ADMIN_PASSWORD.')
                 return False
             password, generated = secrets.token_urlsafe(15), True
         try:
