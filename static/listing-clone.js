@@ -9,7 +9,7 @@
   const redraw = () => { if (typeof S !== 'undefined' && S.view === 'listings' && typeof render === 'function') render(); };
   const json = (path, method, body) => api(path, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   const query = extra => new URLSearchParams({shop_id: state.shopId, ...extra});
-  const key = item => item.source_shop + '\u0000' + item.sku;
+  const key = item => encodeURIComponent(item.source_shop) + '/' + encodeURIComponent(item.sku);  // survives an HTML attribute round trip
 
   async function load() {
     const shopId = state.shopId;
@@ -41,6 +41,7 @@
       <td>${item.draft_id ? '<span class="badge">Đã có bản nháp</span>' : item.has_detail ? '<span class="badge">Đủ ảnh &amp; mô tả</span>' : '<span class="badge">Thiếu chi tiết</span>'}</td></tr>`).join('');
     return `<section class="panel"><div class="panel-head"><div><h3>2. Chọn sản phẩm để sao chép</h3>
       <p class="panel-sub">Danh sách gồm sản phẩm đã quét ở bước 1 (hoặc ở mục Thu thập shop với loại dữ liệu “Đối thủ / thị trường”).</p></div></div>
+      <div class="lc-row"><button type="button" class="btn btn-soft btn-sm" data-lc-all="1">Chọn tất cả</button><button type="button" class="btn btn-soft btn-sm" data-lc-all="0">Bỏ chọn tất cả</button><small>${state.sources.filter(item => !item.draft_id).length} sản phẩm chưa có bản nháp</small></div>
       <form data-lc-search class="lc-row"><input type="search" name="q" value="${esc(state.q)}" placeholder="Tìm theo tên sản phẩm hoặc shop"><button class="btn btn-soft btn-sm" type="submit">Tìm</button></form>
       ${rows ? `<div class="table-wrap"><table class="data-table"><thead><tr><th></th><th>SẢN PHẨM</th><th>SHOP GỐC</th><th>GIÁ</th><th>DỮ LIỆU</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : '<div class="instructions">Chưa có sản phẩm của shop khác. Dán link shop ở bước 1 và quét trước.</div>'}
@@ -131,15 +132,22 @@
     if (target.matches('[data-lc-markup]')) state.markup = Number(target.value) || 0;
   });
   document.addEventListener('click', event => {
-    const button = event.target.closest('[data-lc-create],[data-lc-save],[data-lc-status],[data-lc-post],[data-lc-delete],[data-lc-img]');
+    const button = event.target.closest('[data-lc-all],[data-lc-create],[data-lc-save],[data-lc-status],[data-lc-post],[data-lc-delete],[data-lc-img]');
     if (!button) return;
     const d = button.dataset;
-    if (d.lcCreate !== undefined) {
+    if (d.lcAll !== undefined) {
+      state.selected = d.lcAll === '1' ? new Set(state.sources.filter(item => !item.draft_id).map(key)) : new Set();
+      redraw();
+    } else if (d.lcCreate !== undefined) {
       const items = state.sources.filter(item => state.selected.has(key(item))).map(item => ({source_shop: item.source_shop, sku: item.sku}));
       act(async () => {
-        const result = await json('/api/listings/drafts', 'POST', {shop_id: state.shopId, items, markup_pct: state.markup});
+        let created = 0, skipped = 0;
+        for (let offset = 0; offset < items.length; offset += 50) {  // the API accepts 50 products per request
+          const result = await json('/api/listings/drafts', 'POST', {shop_id: state.shopId, items: items.slice(offset, offset + 50), markup_pct: state.markup});
+          created += list(result.created).length; skipped += list(result.skipped).length;
+        }
         state.selected = new Set();
-        state.message = `Đã tạo ${list(result.created).length} bản nháp` + (list(result.skipped).length ? `, bỏ qua ${result.skipped.length} (đã có hoặc không tìm thấy).` : '.');
+        state.message = `Đã tạo ${created} bản nháp` + (skipped ? `, bỏ qua ${skipped} (đã có hoặc không tìm thấy).` : '.');
       });
     } else if (d.lcSave) act(() => save(d.lcSave), 'Đã lưu bản nháp.');
     else if (d.lcStatus) { const [id, status] = d.lcStatus.split(':'); act(async () => { await save(id); await json(`/api/listings/drafts/${encodeURIComponent(id)}?` + query(), 'PUT', {status}); }); }
