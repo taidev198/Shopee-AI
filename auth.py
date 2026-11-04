@@ -14,6 +14,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -77,6 +78,10 @@ class NewUser(Credentials):
     shop_ids: list[str] = Field(default_factory=list, max_length=1000)
 
 
+class NewPassword(StrictModel):
+    password: str = Field(min_length=12, max_length=256)
+
+
 class ShopAssignments(StrictModel):
     shop_ids: list[str] = Field(max_length=1000)
 
@@ -104,7 +109,87 @@ class AuthService:
             CREATE TABLE IF NOT EXISTS auth_account_shops(
               account_id TEXT NOT NULL REFERENCES auth_accounts(id),shop_id TEXT NOT NULL REFERENCES shops(id),
               PRIMARY KEY(account_id,shop_id));
+            CREATE TABLE IF NOT EXISTS auth_audit(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,ts REAL NOT NULL,account_id TEXT NOT NULL DEFAULT '',
+              username TEXT NOT NULL DEFAULT '',role TEXT NOT NULL DEFAULT '',action TEXT NOT NULL,
+              method TEXT NOT NULL DEFAULT '',path TEXT NOT NULL DEFAULT '',shop_id TEXT NOT NULL DEFAULT '',
+              status INTEGER NOT NULL DEFAULT 0,ip TEXT NOT NULL DEFAULT '',detail TEXT NOT NULL DEFAULT '');
+            CREATE INDEX IF NOT EXISTS auth_audit_ts ON auth_audit(ts);
+            CREATE INDEX IF NOT EXISTS auth_audit_account ON auth_audit(account_id,ts);
             ''')
+        self.audit_count = 0
+
+    AUDIT_RETENTION_DAYS = 90
+
+    def audit(self, action, account=None, *, username='', method='', path='', shop_id='', status=0, ip='', detail=''):
+        """Append one activity row. Never raises: auditing must not break the request."""
+        try:
+            stamp = now()
+            account = account or {}
+            with self.db() as c:
+                c.execute('INSERT INTO auth_audit(ts,account_id,username,role,action,method,path,shop_id,status,ip,detail) '
+                          'VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                          (stamp, account.get('id', ''), account.get('username', username or ''), account.get('role', ''),
+                           action[:160], method, path[:300], shop_id[:80], int(status), ip[:64], detail[:500]))
+                self.audit_count += 1
+                if self.audit_count % 200 == 0:
+                    c.execute('DELETE FROM auth_audit WHERE ts<?', (stamp - self.AUDIT_RETENTION_DAYS * 86400,))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def audit_list(self, limit=50, offset=0, account_id='', query=''):
+        limit, offset = max(1, min(int(limit), 200)), max(0, int(offset))
+        where, params = [], []
+        if account_id:
+            where.append('a.account_id=?'); params.append(account_id)
+        if query:
+            where.append('(a.action LIKE ? OR a.username LIKE ? OR a.path LIKE ?)'); params += [f'%{query}%'] * 3
+        clause = ('WHERE ' + ' AND '.join(where)) if where else ''
+        with self.db() as c:
+            total = c.execute(f'SELECT COUNT(*) FROM auth_audit a {clause}', params).fetchone()[0]
+            rows = c.execute(f'''SELECT a.id,a.ts,a.account_id,a.username,a.role,a.action,a.method,a.path,a.shop_id,
+                a.status,a.ip,a.detail,s.name AS shop_name FROM auth_audit a LEFT JOIN shops s ON s.id=a.shop_id
+                {clause} ORDER BY a.ts DESC,a.id DESC LIMIT ? OFFSET ?''', params + [limit, offset]).fetchall()
+        return {'total': total, 'events': [dict(row) for row in rows]}
+
+    def activity_stats(self):
+        with self.db() as c:
+            last = {row['account_id']: row['ts'] for row in c.execute(
+                "SELECT account_id,MAX(ts) AS ts FROM auth_audit WHERE account_id<>'' GROUP BY account_id")}
+            login = {row['account_id']: row['ts'] for row in c.execute(
+                "SELECT account_id,MAX(ts) AS ts FROM auth_audit WHERE action='Đăng nhập' AND account_id<>'' GROUP BY account_id")}
+            counts = {row['account_id']: row['n'] for row in c.execute(
+                "SELECT account_id,COUNT(*) AS n FROM auth_audit WHERE account_id<>'' AND ts>? GROUP BY account_id",
+                (now() - 30 * 86400,))}
+        return last, login, counts
+
+    def seed_admin(self):
+        """First deploy: create the System account from ADMIN_USERNAME/ADMIN_PASSWORD if no account exists."""
+        username = os.environ.get('ADMIN_USERNAME', '').strip()
+        password = os.environ.get('ADMIN_PASSWORD', '')
+        if not username or not password:
+            return False
+        try:
+            payload = Credentials(username=username, password=password)
+        except ValueError:
+            import logging
+            logging.getLogger('marketlens.auth').warning(
+                'ADMIN_USERNAME/ADMIN_PASSWORD không hợp lệ (tên 3–80 ký tự không khoảng trắng, mật khẩu 12–256 ký tự); bỏ qua seed.')
+            return False
+        try:
+            self.setup(payload)
+        except HTTPException:
+            return False  # an account already exists: never overwrite
+        self.audit('Khởi tạo tài khoản System (seed)', username=payload.username, detail='ADMIN_USERNAME')
+        return True
+
+    def reset_password(self, account_id, password):
+        with self.db() as c:
+            c.execute('BEGIN IMMEDIATE')
+            self.user_account(c, account_id)
+            c.execute('UPDATE auth_accounts SET password_hash=? WHERE id=?', (password_hash(password), account_id))
+            c.execute('DELETE FROM auth_sessions WHERE account_id=?', (account_id,))
+        return {'ok': True}
 
     def setup_required(self):
         with self.db() as c:
@@ -179,6 +264,7 @@ class AuthService:
             c.execute('INSERT INTO auth_accounts VALUES(?,?,?,?,?,1,?)',
                       (account_id, payload.username, payload.username.casefold(), password_hash(payload.password), 'user', now()))
             account = dict(c.execute('SELECT * FROM auth_accounts WHERE id=?', (account_id,)).fetchone())
+        self.audit('Đăng ký tài khoản', account, ip=ip, status=200)
         return self.session(account)
 
     def login(self, payload, request):
@@ -195,15 +281,19 @@ class AuthService:
             row = c.execute('SELECT * FROM auth_accounts WHERE username_key=?', (payload.username.casefold(),)).fetchone()
         matched = password_matches(payload.password, row['password_hash'] if row else _DUMMY_HASH)
         if not row or not row['active'] or not matched:
+            self.audit('Đăng nhập thất bại', username=payload.username, ip=key[0], status=401)
             raise HTTPException(401, 'Tên đăng nhập hoặc mật khẩu không đúng.')
         with self.failure_lock:
             self.failures.pop(key, None)
+        self.audit('Đăng nhập', dict(row), ip=key[0], status=200)
         return self.session(dict(row))
 
     def accounts(self):
         with self.db() as c:
             rows = [self.public_account(row) for row in c.execute('SELECT * FROM auth_accounts ORDER BY created_at,id')]
-        return [{**row, 'shop_ids': self.assigned_shop_ids(row['id'])} for row in rows]
+        last, login, counts = self.activity_stats()
+        return [{**row, 'shop_ids': self.assigned_shop_ids(row['id']), 'last_active': last.get(row['id']),
+                 'last_login': login.get(row['id']), 'actions_30d': counts.get(row['id'], 0)} for row in rows]
 
     @staticmethod
     def validate_shops(c, values):
@@ -305,12 +395,68 @@ def user_permission(path, method):
         return 'shop' if method == 'GET' else None
     return None
 
+AUDIT_LABELS = (
+    ('POST', r'/api/auth/logout', 'Đăng xuất'),
+    ('POST', r'/api/auth/accounts', 'Tạo tài khoản User'),
+    ('PUT', r'/api/auth/accounts/[^/]+/shops', 'Gán quyền shop cho User'),
+    ('PUT', r'/api/auth/accounts/[^/]+/password', 'Đặt lại mật khẩu User'),
+    ('PATCH', r'/api/auth/accounts/[^/]+', 'Khóa/mở User'),
+    ('DELETE', r'/api/auth/accounts/[^/]+', 'Khóa User'),
+    ('POST', r'/api/shops', 'Thêm shop'),
+    ('POST', r'/api/crawl/jobs', 'Bắt đầu thu thập shop'),
+    ('POST', r'/api/crawl/jobs/[^/]+/finish-details', 'Hoàn tất đọc chi tiết sản phẩm'),
+    ('POST', r'/api/crawl/schedules', 'Đặt lịch thu thập'),
+    ('DELETE', r'/api/crawl/schedules/[^/]+', 'Xóa lịch thu thập'),
+    ('POST', r'/api/crawl/import-html', 'Nhập sản phẩm từ HTML'),
+    ('POST', r'/api/import', 'Nhập dữ liệu từ tệp'),
+    ('POST', r'/api/seller/ai/shop-generate', 'Chạy phân tích AI toàn shop'),
+    ('POST', r'/api/seller/ai/generate', 'Chạy phân tích AI sản phẩm'),
+    ('PUT', r'/api/seller/ai/config', 'Đổi cấu hình AI'),
+    ('POST', r'/api/seller/optimize', 'Tối ưu sản phẩm'),
+    ('POST', r'/api/seller/actions', 'Tạo hành động'),
+    ('PATCH', r'/api/seller/actions/[^/]+', 'Cập nhật hành động'),
+    ('POST', r'/api/seller/reports', 'Tạo báo cáo'),
+    ('PUT', r'/api/seller/products/[^/]+/inputs', 'Cập nhật chi phí sản phẩm'),
+    ('POST', r'/api/competitors/product-jobs', 'So sánh đối thủ'),
+    ('POST', r'/api/category-market/.*', 'Thao tác thu thập ngành hàng'),
+)
+AUDIT_SKIP = re.compile(r'/api/crawl/jobs/[^/]+/(?:browser-result|product-result)$|/api/competitors/product-jobs/[^/]+/result$')
+
+
+def audit_label(method, path):
+    for verb, pattern, label in AUDIT_LABELS:
+        if verb == method and re.fullmatch(pattern, path):
+            return label
+    return f'{method} {path}'
+
 
 class AuthMiddleware:
     def __init__(self, app, service):
         self.app, self.service = app, service
 
     async def __call__(self, scope, receive, send):
+        path = scope.get('path', '')
+        if scope['type'] != 'http' or not path.startswith('/api/') or scope.get('method', 'GET') in SAFE_METHODS:
+            return await self._dispatch(scope, receive, send)
+        outcome = {'status': 0}
+
+        async def capture(message):
+            if message['type'] == 'http.response.start':
+                outcome['status'] = message['status']
+            await send(message)
+        try:
+            await self._dispatch(scope, receive, capture)
+        finally:
+            state = scope.get('state', {})
+            account = state.get('auth')
+            if account and outcome['status'] and not AUDIT_SKIP.search(path):
+                query = dict(parse_qsl(scope.get('query_string', b'').decode('utf-8', 'replace')))
+                client = scope.get('client') or ('', 0)
+                await run_in_threadpool(
+                    self.service.audit, audit_label(scope['method'], path), account, method=scope['method'], path=path,
+                    shop_id=state.get('audit_shop') or query.get('shop_id', ''), status=outcome['status'], ip=client[0] or '')
+
+    async def _dispatch(self, scope, receive, send):
         if scope['type'] != 'http':
             return await self.app(scope, receive, send)
         path, method = scope.get('path', ''), scope.get('method', 'GET')
@@ -381,6 +527,8 @@ class AuthMiddleware:
                     return await JSONResponse({'detail':'Nội dung JSON không hợp lệ.'},status_code=422)(scope,receive,send)
                 if isinstance(payload,dict) and 'shop_id' in payload:
                     shops.append(payload['shop_id'])
+            if shops and isinstance(shops[0], str):
+                scope['state']['audit_shop'] = shops[0]
             assigned = set(self.service.assigned_shop_ids(session['id']))
             if not shops or any(not isinstance(value,str) or value not in assigned for value in shops):
                 return await JSONResponse({'detail':'Shop không thuộc phạm vi được phân quyền.'},status_code=403)(scope,receive,send)
@@ -442,6 +590,14 @@ def install(app, db):
     def create(payload: NewUser):
         return service.create_user(payload)
 
+    @router.get('/audit')
+    def audit(limit: int = 50, offset: int = 0, account_id: str = '', q: str = ''):
+        return service.audit_list(limit, offset, account_id, q.strip()[:80])
+
+    @router.put('/accounts/{account_id}/password')
+    def password(account_id: str, payload: NewPassword):
+        return service.reset_password(account_id, payload.password)
+
     @router.put('/accounts/{account_id}/shops')
     def shops(account_id: str,payload: ShopAssignments):
         return service.assign_shops(account_id,payload)
@@ -455,6 +611,7 @@ def install(app, db):
         return service.set_active(account_id,False)
 
     app.state.auth=service
+    service.seed_admin()
     app.include_router(router)
     app.add_middleware(AuthMiddleware,service=service)
     return service

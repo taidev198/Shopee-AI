@@ -336,3 +336,60 @@ def test_registration_is_blocked_before_the_system_account_exists_and_pages_exis
     bootstrap(auth_app)
     page=anonymous(auth_app).get('/register')
     assert page.status_code==200 and 'authForm' in page.text
+
+
+def test_user_actions_are_audited_and_only_system_can_read_the_log(accounts):
+    app,system,user,_,user_account,assigned,_=accounts
+    user.post('/api/shops',json={'url':'https://shopee.vn/audited_shop'})
+    user.post('/api/crawl/jobs',json={'shop_id':assigned['id'],'role':'own','browser':'chrome'})
+    user.post('/api/shops',json={'url':''})  # rejected -> still recorded with its status
+    assert user.get('/api/auth/audit').status_code==403
+    log=system.get('/api/auth/audit',params={'account_id':user_account['id'],'limit':50}).json()
+    actions=[(row['action'],row['status']) for row in log['events']]
+    assert ('Đăng nhập',200) in actions and ('Thêm shop',200) in actions and ('Bắt đầu thu thập shop',202) in actions
+    assert any(row['action']=='Thêm shop' and row['status']>=400 for row in log['events'])
+    crawl=[row for row in log['events'] if row['action']=='Bắt đầu thu thập shop'][0]
+    assert crawl['username']=='test-user' and crawl['shop_id']==assigned['id'] and crawl['shop_name']
+    assert system.get('/api/auth/audit',params={'q':'thu thập'}).json()['total']>=1
+    listed={a['id']:a for a in system.get('/api/auth/accounts').json()['accounts']}[user_account['id']]
+    assert listed['actions_30d']>=3 and listed['last_login'] and listed['last_active']
+    # Failed logins are recorded without leaking the password.
+    anonymous(app).post('/api/auth/login',json={'username':'test-user','password':'Wrong-Password-For-Tests'})
+    failed=[row for row in system.get('/api/auth/audit',params={'q':'thất bại'}).json()['events']]
+    assert failed and 'Wrong-Password' not in str(failed)
+
+
+def test_system_can_reset_a_user_password_and_old_sessions_stop_working(accounts):
+    app,system,user,_,user_account,_,_=accounts
+    new='Brand-New-Password-2026!'
+    assert user.put(f"/api/auth/accounts/{user_account['id']}/password",json={'password':new}).status_code==403
+    assert system.put(f"/api/auth/accounts/{user_account['id']}/password",json={'password':'short'}).status_code==422
+    assert system.put(f"/api/auth/accounts/{user_account['id']}/password",json={'password':new}).status_code==200
+    assert user.get('/api/shops').status_code==401
+    assert anonymous(app).post('/api/auth/login',json={'username':'test-user','password':USER_PASSWORD}).status_code==401
+    assert anonymous(app).post('/api/auth/login',json={'username':'test-user','password':new}).status_code==200
+
+
+def test_admin_account_is_seeded_from_environment_only_on_first_run(tmp_path,monkeypatch):
+    monkeypatch.setenv('MARKET_DB',str(tmp_path/'seed.db'))
+    monkeypatch.setenv('ADMIN_USERNAME','seed-admin');monkeypatch.setenv('ADMIN_PASSWORD','Seeded-Admin-Pass-2026!')
+    import app
+    app=importlib.reload(app)
+    assert not app.app.state.auth.setup_required()
+    client=anonymous(app)
+    assert client.post('/api/auth/login',json={'username':'seed-admin','password':'Seeded-Admin-Pass-2026!'}).json()['account']['role']=='system'
+    # A different password in the environment never overwrites an existing account.
+    monkeypatch.setenv('ADMIN_PASSWORD','Another-Admin-Pass-2026!')
+    app=importlib.reload(app)
+    assert anonymous(app).post('/api/auth/login',json={'username':'seed-admin','password':'Another-Admin-Pass-2026!'}).status_code==401
+    assert anonymous(app).post('/api/auth/login',json={'username':'seed-admin','password':'Seeded-Admin-Pass-2026!'}).status_code==200
+    audit=app.app.state.auth.audit_list()
+    assert any('seed' in row['action'] for row in audit['events'])
+
+
+def test_invalid_seed_credentials_are_ignored(tmp_path,monkeypatch):
+    monkeypatch.setenv('MARKET_DB',str(tmp_path/'badseed.db'))
+    monkeypatch.setenv('ADMIN_USERNAME','seed-admin');monkeypatch.setenv('ADMIN_PASSWORD','short')
+    import app
+    app=importlib.reload(app)
+    assert app.app.state.auth.setup_required()

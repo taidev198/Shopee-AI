@@ -9,6 +9,10 @@ services:
         value: /data/market.db
       - key: DATABASE_URL
         sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
       - key: BACKUP_D1_ACCOUNT_ID
         sync: false
       - key: BACKUP_D1_DATABASE_ID

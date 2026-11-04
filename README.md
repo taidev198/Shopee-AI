@@ -259,6 +259,11 @@ Sản phẩm dùng thông tin đã lưu của SKU. Tối ưu giá cho phép sử
 Gateway (`ollama_gateway.py`) chỉ chuyển tiếp `/api/tags` và `/api/generate`, và yêu cầu Bearer token.
 URL quick tunnel đổi mỗi lần chạy lại; muốn URL cố định hãy dùng named tunnel của Cloudflare. Máy phải bật thì AI mới hoạt động.
 
+## Tài khoản admin lần deploy đầu và nhật ký hoạt động
+
+- Đặt `ADMIN_USERNAME` (3–80 ký tự, không khoảng trắng) và `ADMIN_PASSWORD` (≥ 12 ký tự) trên Render: ở lần chạy đầu, khi DB chưa có tài khoản nào, app tạo sẵn tài khoản **System** này. Các lần sau biến này bị bỏ qua (không ghi đè, không đổi mật khẩu). Không đặt biến thì mở `/setup` để tự tạo.
+- System → **Tài khoản & hoạt động**: danh sách tài khoản (đăng nhập gần nhất, số thao tác 30 ngày), tạo User, gán shop, khóa/mở, đặt lại mật khẩu, và **nhật ký hoạt động** (đăng nhập, đăng ký, thêm shop, thu thập, AI, đổi quyền…; lọc theo tài khoản/từ khóa, lưu 90 ngày). Mật khẩu không bao giờ được ghi vào nhật ký.
+
 ## Lưu dữ liệu trên Neon Postgres (DB chính)
 
 Đặt biến môi trường `DATABASE_URL` = connection string của Neon (`postgresql://…?sslmode=require`, lấy ở nút **Connect**). Khi có biến này, app lưu **toàn bộ dữ liệu trực tiếp trong Neon** (tài khoản, shop, sản phẩm, job, AI…): không dùng file SQLite, không sao lưu, nên deploy lại trên Render không mất gì. Bảng được tạo tự động ở lần chạy đầu.
