@@ -89,6 +89,7 @@ class AuthService:
     def __init__(self, db):
         self.db = db
         self.failures = {}
+        self.signups = {}
         self.failure_lock = threading.Lock()
         with db() as c:
             c.executescript('''
@@ -154,6 +155,29 @@ class AuthService:
             account_id = uuid.uuid4().hex
             c.execute('INSERT INTO auth_accounts VALUES(?,?,?,?,?,1,?)',
                       (account_id, payload.username, payload.username.casefold(), password_hash(payload.password), 'system', now()))
+            account = dict(c.execute('SELECT * FROM auth_accounts WHERE id=?', (account_id,)).fetchone())
+        return self.session(account)
+
+    def register(self, payload, request):
+        """Self-service sign-up: always a plain User with no shops assigned."""
+        ip = request.client.host if request.client else ''
+        stamp = now()
+        with self.failure_lock:
+            recent = [value for value in self.signups.get(ip, []) if stamp-value < 3600]
+            if len(recent) >= 10:
+                raise HTTPException(429, 'Đăng ký quá nhiều lần từ địa chỉ này. Hãy thử lại sau.', headers={'Retry-After': '3600'})
+            if len(self.signups) >= 512 and ip not in self.signups:
+                self.signups.pop(next(iter(self.signups)))
+            self.signups[ip] = recent + [stamp]
+        with self.db() as c:
+            c.execute('BEGIN IMMEDIATE')
+            if c.execute('SELECT 1 FROM auth_accounts LIMIT 1').fetchone() is None:
+                raise HTTPException(409, 'Hệ thống chưa có tài khoản System. Hãy khởi tạo trước.')
+            if c.execute('SELECT 1 FROM auth_accounts WHERE username_key=?', (payload.username.casefold(),)).fetchone():
+                raise HTTPException(409, 'Tên đăng nhập đã tồn tại.')
+            account_id = uuid.uuid4().hex
+            c.execute('INSERT INTO auth_accounts VALUES(?,?,?,?,?,1,?)',
+                      (account_id, payload.username, payload.username.casefold(), password_hash(payload.password), 'user', now()))
             account = dict(c.execute('SELECT * FROM auth_accounts WHERE id=?', (account_id,)).fetchone())
         return self.session(account)
 
@@ -291,7 +315,7 @@ class AuthMiddleware:
             return await self.app(scope, receive, send)
         path, method = scope.get('path', ''), scope.get('method', 'GET')
         if (path.startswith('/api/') and path != '/api/health') or path in (
-                '/user','/system','/workspace','/login','/setup','/static/index.html','/static/system.html'):
+                '/user','/system','/workspace','/login','/setup','/register','/static/index.html','/static/system.html'):
             original_send = send
             async def no_store(message):
                 if message['type'] == 'http.response.start':
@@ -306,7 +330,7 @@ class AuthMiddleware:
         session = self.service.authenticate(scope)
         scope.setdefault('state', {})['auth'] = self.service.public_account(session) if session else None
         scope['state']['auth_session'] = session
-        public = (path == '/api/health' and method == 'GET') or path in ('/api/auth/setup', '/api/auth/login', '/api/auth/me')
+        public = (path == '/api/health' and method == 'GET') or path in ('/api/auth/setup', '/api/auth/login', '/api/auth/register', '/api/auth/me')
         page_area = 'system' if path in ('/system', '/static/system.html') else 'user' if path in ('/user','/workspace','/static/index.html') else None
         if page_area:
             if not session:
@@ -324,7 +348,7 @@ class AuthMiddleware:
         if method not in SAFE_METHODS:
             if not same_local_origin(scope):
                 return await JSONResponse({'detail':'Nguồn yêu cầu không hợp lệ.'},status_code=403)(scope,receive,send)
-            if path not in ('/api/auth/setup','/api/auth/login') and (not session or not hmac.compare_digest(Headers(scope=scope).get('x-csrf-token',''), session['csrf_token'])):
+            if path not in ('/api/auth/setup','/api/auth/login','/api/auth/register') and (not session or not hmac.compare_digest(Headers(scope=scope).get('x-csrf-token',''), session['csrf_token'])):
                 return await JSONResponse({'detail':'Phiên yêu cầu thiếu hoặc sai mã CSRF. Tải lại trang rồi thử lại.'},status_code=403)(scope,receive,send)
         if public or session['role'] == 'system':
             return await self.app(scope, receive, send)
@@ -393,6 +417,10 @@ def install(app, db):
     @router.post('/setup')
     def setup(payload: Credentials, request: Request):
         return signed_response(request,service.setup(payload))
+
+    @router.post('/register')
+    def register(payload: Credentials, request: Request):
+        return signed_response(request,service.register(payload,request))
 
     @router.post('/login')
     def login(payload: Credentials, request: Request):

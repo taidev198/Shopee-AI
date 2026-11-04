@@ -49,6 +49,15 @@ def install(app, root):
             return redirect(request, '/system' if account['role'] == 'system' else '/user')
         return FileResponse(static / 'auth.html')
 
+    @router.get('/register')
+    def register(request: Request):
+        if request.app.state.auth.setup_required():
+            return redirect(request, '/setup')
+        account = getattr(request.state, 'auth', None)
+        if account:
+            return redirect(request, '/system' if account['role'] == 'system' else '/user')
+        return FileResponse(static / 'auth.html')
+
     @router.get('/setup')
     def setup(request: Request):
         if not request.app.state.auth.setup_required():

@@ -7,9 +7,9 @@ const userHtml=await readFile(new URL('../../static/index.html',import.meta.url)
 const testPassword='fixture-only-'+String('z').repeat(14);
 function setup({path='/login',search='',handler}={}) {
   const listeners={},nodes={},requests=[],redirects=[],timers=new Map();let nextTimer=0;
-  for(const id of ['authStatus','authTitle','authModeLabel','authDescription','authHelp','authConfirmWrap','authConfirmPassword','authUsername','authPassword','authSubmit','authRetry','authShowPassword'])nodes[id]={id,value:'',textContent:'',hidden:false,disabled:false,type:id==='authPassword'?'password':'text',attrs:{},setAttribute(name,value){this.attrs[name]=value;}};
+  for(const id of ['authStatus','authTitle','authModeLabel','authDescription','authHelp','authConfirmWrap','authConfirmPassword','authUsername','authPassword','authSubmit','authRetry','authShowPassword','authSwitch'])nodes[id]={append(){},id,value:'',textContent:'',hidden:false,disabled:false,type:id==='authPassword'?'password':'text',attrs:{},setAttribute(name,value){this.attrs[name]=value;}};
   const context=vm.createContext({window:{location:{pathname:path,search,origin:'http://127.0.0.1:8000',assign:url=>redirects.push({method:'assign',url}),replace:url=>redirects.push({method:'replace',url})}},URL,URLSearchParams,AbortController,Promise,Object,String,
-    document:{getElementById:id=>nodes[id],addEventListener(type,callback){listeners[type]=callback;}},
+    document:{createElement:()=>({}),getElementById:id=>nodes[id],addEventListener(type,callback){listeners[type]=callback;}},
     setTimeout(callback,delay){const id=++nextTimer;timers.set(id,{callback,delay});return id;},clearTimeout:id=>timers.delete(id),
     fetch:async(url,options)=>{requests.push({url,options,body:options.body?JSON.parse(options.body):null});const result=handler?await handler(url,options):{authenticated:false,setup_required:false};return {ok:result.ok!==false,json:async()=>result.data||result};},
   });vm.runInContext(source,context);
@@ -87,4 +87,18 @@ test('a stalled initial auth check times out and requires an explicit retry',asy
   const timer=[...app.timers.values()][0];assert.equal(timer.delay,20000);timer.callback();await pending;
   assert.match(app.nodes.authStatus.textContent,/20 giây/);assert.equal(app.nodes.authRetry.hidden,false);assert.equal(app.nodes.authSubmit.disabled,true);assert.equal(app.requests[0].options.signal.aborted,true);
   stall=false;await app.click('authRetry');assert.equal(app.requests.length,2);assert.equal(app.nodes.authSubmit.disabled,false);
+});
+
+test('register mode confirms the password, posts to /api/auth/register and lands in the user workspace',async()=>{
+  const app=setup({path:'/register',handler:async url=>url.endsWith('/me')?{authenticated:false,setup_required:false}:{authenticated:true,account:{role:'user'}}});await app.init();
+  assert.equal(app.nodes.authConfirmWrap.hidden,false);assert.match(app.nodes.authTitle.textContent,/Đăng ký/);assert.match(app.nodes.authSubmit.textContent,/Đăng ký/);
+  app.nodes.authUsername.value='new-seller';app.nodes.authPassword.value=testPassword;app.nodes.authConfirmPassword.value='different-password';await app.submit();
+  assert.equal(app.requests.length,1);assert.match(app.nodes.authStatus.textContent,/chưa khớp/);
+  app.nodes.authConfirmPassword.value=testPassword;await app.submit();
+  assert.equal(app.requests[1].url,'/api/auth/register');assert.deepEqual(app.requests[1].body,{username:'new-seller',password:testPassword});assert.equal(app.redirects[0].url,'/user');
+});
+
+test('guest home links to login and register',async()=>{
+  const html=await readFile(new URL('../../static/guest.html',import.meta.url),'utf8');
+  assert.match(html,/href="\/login"/);assert.match(html,/href="\/register"/);
 });

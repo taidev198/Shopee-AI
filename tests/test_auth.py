@@ -309,3 +309,30 @@ def test_user_can_collect_own_shop_products_but_not_foreign_shop_or_system_tools
     assert user.get('/api/crawl/jobs/does-not-exist').status_code==403
     # Scheduling and saved-HTML import stay System-only.
     assert user.post('/api/crawl/schedules',json={'shop_id':assigned['id'],'target_url':assigned['url']}).status_code==403
+
+
+def test_self_registration_creates_a_plain_user_without_shops(accounts):
+    app,system,_,_,_,_,_=accounts
+    visitor=anonymous(app)
+    created=visitor.post('/api/auth/register',json={'username':'new-seller','password':USER_PASSWORD})
+    assert created.status_code==200,created.text
+    data=created.json()
+    assert data['account']['role']=='user' and data['assigned_shop_ids']==[]
+    visitor.headers['X-CSRF-Token']=data['csrf_token']
+    assert visitor.get('/api/shops').json()==[]
+    assert visitor.get('/system',follow_redirects=False).status_code==403
+    assert visitor.get('/api/auth/accounts').status_code==403
+    # The new user can add and collect a shop of their own.
+    shop=visitor.post('/api/shops',json={'url':'https://shopee.vn/self_signup_shop'})
+    assert shop.status_code==200 and [row['id'] for row in visitor.get('/api/shops').json()]==[shop.json()['id']]
+    assert anonymous(app).post('/api/auth/register',json={'username':'NEW-SELLER','password':USER_PASSWORD}).status_code==409
+    assert anonymous(app).post('/api/auth/register',json={'username':'short-pass','password':'short'}).status_code==422
+
+
+def test_registration_is_blocked_before_the_system_account_exists_and_pages_exist(auth_app):
+    visitor=anonymous(auth_app)
+    assert visitor.post('/api/auth/register',json={'username':'too-early','password':USER_PASSWORD}).status_code==409
+    assert visitor.get('/register',follow_redirects=False).status_code==307
+    bootstrap(auth_app)
+    page=anonymous(auth_app).get('/register')
+    assert page.status_code==200 and 'authForm' in page.text
