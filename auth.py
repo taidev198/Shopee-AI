@@ -261,6 +261,14 @@ def user_permission(path, method):
         return 'global' if method == 'GET' else None
     if path in ('/api/category-market/analysis', '/api/category-market/products', '/api/category-market/export', '/api/category-market/ml/export'):
         return 'global' if method == 'GET' else None
+    if path == '/api/crawl/config':
+        return 'global' if method == 'GET' else None
+    if path == '/api/crawl/jobs':
+        return 'shop' if method in ('GET', 'POST') else None
+    if re.fullmatch(r'/api/crawl/jobs/[^/]+', path):
+        return 'job' if method == 'GET' else None
+    if re.fullmatch(r'/api/crawl/jobs/[^/]+/(?:browser-result|product-result|finish-details)', path):
+        return 'job' if method == 'POST' else None
     if path in ('/api/dashboard', '/api/export/opportunities', '/api/seller/analysis', '/api/seller/ai/shop'):
         return 'shop' if method == 'GET' else None
     if path in ('/api/seller/optimize', '/api/seller/actions', '/api/seller/reports', '/api/seller/ai/generate', '/api/seller/ai/shop-generate'):
@@ -323,6 +331,12 @@ class AuthMiddleware:
         permission = user_permission(path, method)
         if permission is None:
             return await JSONResponse({'detail':'Tài khoản User không có quyền thực hiện thao tác System này.'},status_code=403)(scope,receive,send)
+        if permission == 'job':
+            job_id = path.split('/')[4]
+            with self.service.db() as c:
+                job = c.execute('SELECT shop_id FROM crawl_jobs WHERE id=?', (job_id,)).fetchone()
+            if job is None or job['shop_id'] not in set(self.service.assigned_shop_ids(session['id'])):
+                return await JSONResponse({'detail':'Lượt thu thập không thuộc phạm vi được phân quyền.'},status_code=403)(scope,receive,send)
         if permission == 'shop':
             shops = [value for key,value in parse_qsl(scope.get('query_string',b'').decode('utf-8','replace'),keep_blank_values=True) if key == 'shop_id']
             messages = []

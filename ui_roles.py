@@ -8,10 +8,13 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 USER_VIEWS = frozenset(('overview', 'myShops', 'shopAnalysis', 'products', 'optimizer',
                         'competitors', 'marketAnalysis', 'opportunities', 'strategy', 'actions', 'reports'))
-SYSTEM_VIEWS = frozenset(('crawler', 'categoryMarket', 'marketSchedules', 'imports', 'users'))
+SHARED_VIEWS = frozenset(('crawler',))  # shop collection: both User and System workspaces
+SYSTEM_VIEWS = frozenset(('categoryMarket', 'marketSchedules', 'imports', 'users'))
 
 
 def area_for_view(view, default='user'):
+    if view in SHARED_VIEWS:
+        return default
     if view in SYSTEM_VIEWS:
         return 'system'
     if view in USER_VIEWS:
@@ -55,7 +58,8 @@ def install(app, root):
 
     @router.get('/workspace')
     def workspace(request: Request):
-        return redirect(request, '/' + area_for_view(selected_view(request)))
+        view = selected_view(request)
+        return redirect(request, '/' + ('system' if view in SHARED_VIEWS else area_for_view(view)))
 
     @router.get('/user')
     def user(request: Request):

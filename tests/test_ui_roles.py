@@ -5,7 +5,7 @@ import pytest
 from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
 
-from ui_roles import SYSTEM_VIEWS, USER_VIEWS, area_for_view
+from ui_roles import SHARED_VIEWS, SYSTEM_VIEWS, USER_VIEWS, area_for_view
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def test_legacy_collection_views_redirect_to_system_area_preserving_selection(cl
 
 
 @pytest.mark.parametrize('area,view,target', [
-    ('user', 'crawler', 'system'), ('user', 'categoryMarket', 'system'),
+    ('user', 'categoryMarket', 'system'),
     ('user', 'marketSchedules', 'system'), ('user', 'imports', 'system'),
     ('system', 'overview', 'user'), ('system', 'shopAnalysis', 'user'),
     ('system', 'marketAnalysis', 'user'), ('system', 'opportunities', 'user'),
@@ -66,7 +66,7 @@ def test_legacy_redirect_preserves_unicode_repeated_blank_and_url_like_query_val
 
 
 @pytest.mark.parametrize('views,target', [
-    (['crawler', 'products'], 'system'), (['products', 'crawler'], 'user'),
+    (['crawler', 'products'], 'system'), (['products', 'categoryMarket'], 'user'),
     (['unknown', 'crawler'], 'user'),
 ])
 def test_duplicate_view_keys_follow_the_same_first_value_as_browser_url_search_params(client, views, target):
@@ -105,9 +105,9 @@ def test_user_and_system_page_sidebars_contain_only_their_own_views(client):
     user_soup, system_soup = (BeautifulSoup(response.text, 'html.parser') for response in (user, system))
     user_views = {node['data-view'] for node in user_soup.select('.sidebar [data-view]')}
     system_views = {node['data-view'] for node in system_soup.select('.sidebar [data-view]')}
-    assert {'overview', 'shopAnalysis', 'products', 'optimizer', 'actions'} <= user_views <= USER_VIEWS
-    assert system_views == SYSTEM_VIEWS
-    assert user_views.isdisjoint(system_views)
+    assert {'overview', 'shopAnalysis', 'products', 'optimizer', 'actions', 'crawler'} <= user_views <= USER_VIEWS | SHARED_VIEWS
+    assert system_views == SYSTEM_VIEWS | SHARED_VIEWS
+    assert user_views & system_views == set(SHARED_VIEWS)
 
 
 def test_authenticated_system_keeps_existing_local_api_access(client):

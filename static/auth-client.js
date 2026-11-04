@@ -38,6 +38,7 @@
     get isSystem(){return session.authenticated&&session.account?.role==='system';},
     get canManageSystem(){return this.isSystem;},
     get canCollect(){return this.isSystem&&root.document.body.dataset.appRole==='system';},
+    get canCrawlShop(){return session.authenticated&&['system','user'].includes(session.account?.role)&&session.account.role===root.document.body.dataset.appRole;},
     async request(path,options={}){await ready;return send(path,options);},
     async logout(){await ready;await send('/api/auth/logout',{method:'POST'});session={authenticated:false};root.location.assign('/login');},
     requireSession(){if(!session.authenticated){authRedirect();return false;}return true;},

@@ -32,7 +32,7 @@ test('cross origin requests never receive a session CSRF token',async()=>{
 
 test('only System in its collection area enables browser collection',async()=>{
   const system=client();await system.auth.ready;assert.equal(system.auth.canCollect,true);
-  const user=client({role:'user',area:'user'});await user.auth.ready;assert.equal(user.auth.canCollect,false);assert.equal(user.auth.isSystem,false);
+  const user=client({role:'user',area:'user'});await user.auth.ready;assert.equal(user.auth.canCollect,false);assert.equal(user.auth.canCrawlShop,true);assert.equal(user.auth.isSystem,false);
   const analytics=client({role:'system',area:'user'});await analytics.auth.ready;assert.equal(analytics.auth.canCollect,false);assert.equal(analytics.auth.isSystem,true);
 });
 
@@ -53,7 +53,7 @@ test('canonical role navigation encodes shop values and denies User collection r
   const {routes}=client();
   assert.equal(routes.url('imports','shop&a=b'),'/system?view=imports&shop_id=shop%26a%3Db');
   assert.equal(routes.url('shopAnalysis','shop 1'),'/user?view=shopAnalysis&shop_id=shop+1');
-  assert.equal(routes.canOpen('user','crawler'),false);assert.equal(routes.canOpen('user','users'),false);
+  assert.equal(routes.canOpen('user','crawler'),true);assert.equal(routes.areaForView('crawler','user'),'user');assert.equal(routes.areaForView('crawler','system'),'system');assert.equal(routes.url('crawler','s1','user'),'/user?view=crawler&shop_id=s1');assert.equal(routes.canOpen('user','imports'),false);assert.equal(routes.canOpen('user','users'),false);
   assert.equal(routes.canOpen('user','shopAnalysis'),true);assert.equal(routes.canOpen('system','users'),true);
   assert.equal(routes.defaultView('user'),'myShops');assert.equal(routes.defaultView('system'),'crawler');
 });

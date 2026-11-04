@@ -165,8 +165,7 @@ def test_user_can_read_only_assigned_shops_and_cannot_claim_existing_foreign_url
 
 
 @pytest.mark.parametrize('method,path',[
-    ('get','/api/crawl/jobs'),('get','/api/crawl/config'),('post','/api/import'),
-    ('post','/api/crawl/jobs'),('get','/api/category-market/runs'),('post','/api/category-market/campaigns'),
+    ('post','/api/import'),('post','/api/crawl/schedules'),('post','/api/crawl/import-html'),('get','/api/category-market/runs'),('post','/api/category-market/campaigns'),
     ('get','/api/category-market/schedules'),('post','/api/category-market/ml/train'),
     ('post','/api/integrations/push'),('put','/api/seller/ai/config'),('get','/api/auth/accounts'),
 ])
@@ -291,3 +290,22 @@ def test_render_hostname_origin_is_accepted_only_for_exact_https_host(monkeypatc
     assert not same_local_origin(scope('shopee-ai.onrender.com', 'https://evil.example'))
     assert not same_local_origin(scope('evil.example', 'https://evil.example'))
     assert not same_local_origin(scope('shopee-ai.onrender.com', 'http://shopee-ai.onrender.com'))
+
+
+def test_user_can_collect_own_shop_products_but_not_foreign_shop_or_system_tools(accounts):
+    _,system,user,_,_,assigned,foreign=accounts
+    assert user.get('/api/crawl/config').status_code==200
+    mine=user.post('/api/crawl/jobs',json={'shop_id':assigned['id'],'role':'own','browser':'chrome'})
+    assert mine.status_code==202,mine.text
+    job_id=mine.json()['job_id']
+    assert user.get(f'/api/crawl/jobs/{job_id}').status_code==200
+    assert [row['id'] for row in user.get('/api/crawl/jobs',params={'shop_id':assigned['id']}).json()]==[job_id]
+    # Foreign shop: no start, no list, and foreign jobs cannot be read or fed results.
+    assert user.post('/api/crawl/jobs',json={'shop_id':foreign['id'],'role':'own','browser':'chrome'}).status_code==403
+    assert user.get('/api/crawl/jobs',params={'shop_id':foreign['id']}).status_code==403
+    other=system.post('/api/crawl/jobs',json={'shop_id':foreign['id'],'role':'own','browser':'chrome'}).json()['job_id']
+    assert user.get(f'/api/crawl/jobs/{other}').status_code==403
+    assert user.post(f'/api/crawl/jobs/{other}/browser-result',json={'result_token':'x','pages':[]}).status_code==403
+    assert user.get('/api/crawl/jobs/does-not-exist').status_code==403
+    # Scheduling and saved-HTML import stay System-only.
+    assert user.post('/api/crawl/schedules',json={'shop_id':assigned['id'],'target_url':assigned['url']}).status_code==403

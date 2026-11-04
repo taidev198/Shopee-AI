@@ -7,8 +7,9 @@ const compact = n => n==null ? '—' : n>=1e9 ? (n/1e9).toFixed(2).replace('.','
 const num = n => n==null ? '—' : new Intl.NumberFormat('vi-VN',{maximumFractionDigits:0}).format(n);
 const toast = msg => {const el=$('toast');el.textContent=msg;el.classList.remove('hidden');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.add('hidden'),5000)};
 const canCollect = ()=>window.MarketLensAuth?window.MarketLensAuth.canCollect:true;
+const canCrawlShop = ()=>window.MarketLensAuth?window.MarketLensAuth.canCrawlShop:true;
 const appArea = ()=>document.body?.dataset?.appRole||'user';
-const routeUrl = (view,shopId=S.shopId)=>window.MarketLensRoutes?.url(view,shopId)||('/workspace?view='+encodeURIComponent(view)+(shopId?'&shop_id='+encodeURIComponent(shopId):''));
+const routeUrl = (view,shopId=S.shopId)=>window.MarketLensRoutes?.url(view,shopId,appArea())||('/workspace?view='+encodeURIComponent(view)+(shopId?'&shop_id='+encodeURIComponent(shopId):''));
 const api = async (path, opts={}) => {if(window.MarketLensAuth)return window.MarketLensAuth.request(path,opts);const r=await fetch(path,opts);let x;try{x=await r.json()}catch{x={detail:'Lỗi đọc phản hồi'}};if(!r.ok) throw Object.assign(new Error(typeof x.detail==='string'?x.detail:'Yêu cầu không thành công'),{status:r.status});return x};
 const pages={users:'Tài khoản & phân quyền',myShops:'My Shops',shopAnalysis:'Shop Analysis',optimizer:'Product Optimizer',strategy:'AI Strategy',actions:'Action Center',reports:'Reports',marketAnalysis:'Phân tích ngành hàng',marketSchedules:'Lịch quét ngành hàng',categoryMarket:'Thu thập ngành hàng',overview:'Tổng quan',products:'Sản phẩm của shop',opportunities:'Cơ hội sản phẩm',competitors:'Đối thủ & thị trường',imports:'Nguồn dữ liệu',crawler:'Bot thu thập'};
 const headings={users:'Quản lý tài khoản User',myShops:'Cửa hàng của bạn',shopAnalysis:'Phân tích sức khỏe shop',optimizer:'Tối ưu hiệu quả bán hàng',strategy:'Chiến lược từ dữ liệu',actions:'Kế hoạch triển khai',reports:'Báo cáo & hiệu quả',marketAnalysis:'Phân tích ngành hàng & tín hiệu thị trường',marketSchedules:'Lịch thu thập dữ liệu ngành hàng',categoryMarket:'Thu thập sản phẩm theo ngành hàng',overview:'Tổng quan cửa hàng',products:'Phân tích sản phẩm',opportunities:'Sản phẩm tiềm năng',competitors:'Thị trường & đối thủ',imports:'Trung tâm dữ liệu',crawler:'Browser crawler'};
@@ -25,7 +26,7 @@ async function loadReport(refreshView=true){
   if(refreshView||S.view!=='crawler')render();return true;
  }catch(error){if(S.shopId!==shopId)return false;S.reportError=error.message;if([401,403,404].includes(error.status))S.data=null;if(!S.data){$('dataBadge').textContent='CHƯA ĐỌC ĐƯỢC DỮ LIỆU';render();}toast(error.message);return false;}
 }
-function setView(view){if(!pages[view])return;if(window.MarketLensRoutes){if(!window.MarketLensRoutes.canOpen(window.MarketLensAuth?.session?.account?.role,view)){toast('Chức năng này thuộc khu vực System. Hãy liên hệ người quản lý dữ liệu.');return;}if(window.MarketLensRoutes.areaForView(view)!==appArea()){location.assign(routeUrl(view));return;}}S.view=view;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===view));$('pageTitle').textContent=pages[view];$('mainHeading').innerHTML=headings[view]+'<span class="h1-dot">.</span>';$('viewContainer').innerHTML='';history.replaceState(null,'',routeUrl(view));render();window.scrollTo({top:0,behavior:'smooth'})}
+function setView(view){if(!pages[view])return;if(window.MarketLensRoutes){if(!window.MarketLensRoutes.canOpen(window.MarketLensAuth?.session?.account?.role,view)){toast('Chức năng này thuộc khu vực System. Hãy liên hệ người quản lý dữ liệu.');return;}if(window.MarketLensRoutes.areaForView(view,appArea())!==appArea()){location.assign(routeUrl(view));return;}}S.view=view;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===view));$('pageTitle').textContent=pages[view];$('mainHeading').innerHTML=headings[view]+'<span class="h1-dot">.</span>';$('viewContainer').innerHTML='';history.replaceState(null,'',routeUrl(view));render();window.scrollTo({top:0,behavior:'smooth'})}
 function panel(title,sub,body,action=''){return `<section class="panel"><div class="panel-head"><div><h3 class="panel-title">${title}</h3><p class="panel-sub">${sub}</p></div>${action}</div>${body}</section>`}
 function kpi(title,value,hint,icon,style=''){return `<article class="kpi"><div class="kpi-top"><span class="kpi-title">${title}</span><div class="kpi-icon ${style}">${icon}</div></div><div class="kpi-value">${value}</div><div class="kpi-hint">${hint}</div></article>`}
 function bars(categories){if(!categories.length)return '<div class="chart-empty">Hãy nhập dữ liệu sản phẩm để xem ngành hàng.</div>';const max=Math.max(1,...categories.map(x=>x.revenue_30d));return categories.slice(0,7).map(x=>`<div class="category-bar"><div class="cat-row"><strong title="${esc(x.category)}">${esc(x.category)}</strong><span>${compact(x.revenue_30d)} ₫</span></div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,100*x.revenue_30d/max)}%"></div></div></div>`).join('')}
@@ -261,7 +262,7 @@ ${panel('Dữ liệu cửa hàng của bạn','Báo cáo Seller Center, sản ph
 ${panel('Dữ liệu đối thủ & thị trường','Tệp nghiên cứu thị trường hợp lệ có thông tin shop bán',`<form class="form" data-upload="market"><div class="upload-area"><input type="file" name="file" accept=".csv,.xlsx" required ${disabled?'disabled':''}><div><strong id="fileLabelMarket">⇧ Chọn hoặc thả file CSV / XLSX</strong><p>Dung lượng tối đa 8 MB · 10.000 dòng / lần</p></div></div><div class="form-row"><div><label>Ngày quan sát</label><input name="snapshot_date" type="date" required value="${localDate()}" ${disabled?'disabled':''}></div><div><label>Nguồn</label><select disabled><option>Đối thủ / thị trường</option></select></div></div><button class="btn btn-primary" type="submit" ${disabled?'disabled':''}>Nhập dữ liệu đối thủ →</button><p><a class="text-link" href="/api/template/market">↓ Tải CSV mẫu đối thủ</a></p></form>`)}
 </div><div class="section-head"><h2>Hướng dẫn định dạng dữ liệu</h2></div><div class="instructions"><strong>Cột cần có:</strong> <code>ten_san_pham</code>. Nên thêm <code>sku</code>, <code>nganh_hang</code>, <code>gia_ban</code>, <code>so_luong_ban_30_ngay</code>, <code>doanh_thu_30_ngay</code>, <code>gia_von</code>. File đối thủ nên có <code>ten_shop</code>.<br><strong>Lưu ý:</strong> Dữ liệu <code>da_ban</code> là tích lũy, không thay thế <code>so_luong_ban_30_ngay</code>. Muốn phân tích xu hướng, nhập các snapshot theo ngày. Chỉ nhập dữ liệu bạn được quyền sử dụng.</div><div class="section-head"><h2>Lịch sử nhập dữ liệu</h2></div>${d.imports.length?`<div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>TỆP</th><th>LOẠI DỮ LIỆU</th><th>SỐ DÒNG</th><th>NGÀY DỮ LIỆU</th><th>THỜI GIAN NHẬP</th></tr></thead><tbody>${d.imports.map(x=>`<tr data-pagination-id="${esc(x.id??[x.filename,x.imported_at].join('|'))}"><td class="product-name">${esc(x.filename)}</td><td>${badge(x.role==='own'?'Shop':'Đối thủ')}</td><td>${num(x.rows_imported)}</td><td>${esc(x.snapshot_date)}</td><td>${esc(x.imported_at.slice(0,16).replace('T',' '))}</td></tr>`).join('')}</tbody></table></div></div>`:empty('▤','Chưa có lịch sử nhập','Bắt đầu bằng một tệp CSV/XLSX theo định dạng mẫu.','Xem hướng dẫn')}`}
 async function refreshChromeConnection(){
- if(!canCollect())return;
+ if(!canCrawlShop())return;
  try{const bridge=await window.MarketLensChrome.ping();S.chromeConnected=true;S.chromeVersion=bridge.version}
  catch{S.chromeConnected=false}
  const el=$('chromeConnection');
@@ -317,31 +318,31 @@ function renderCrawler(d){
  return `<div class="section-head"><h2>Bot thu thập sản phẩm</h2>${state}</div>${diagnostics}
  <div class="crawl-progress"><p id="crawlFeedback" role="status" aria-live="polite">${esc(S.crawlRun?.message||'')}</p><progress id="crawlDetailProgress" class="${S.crawlRun?.detailPhase?'':'hidden'}" max="${Math.max(1,S.crawlRun?.total||1)}" value="${(S.crawlRun?.completed||0)+(S.crawlRun?.failed||0)}" aria-label="Tiến độ đọc chi tiết sản phẩm"></progress><button type="button" id="stopCrawlDetails" class="btn btn-soft btn-sm ${S.crawlSubmitting&&S.crawlRun?.detailPhase?'':'hidden'}" ${S.crawlRun?.stopRequested?'disabled':''}>${S.crawlRun?.stopRequested?'Đang dừng sau sản phẩm hiện tại...':'Dừng sau sản phẩm hiện tại'}</button></div>
  <div class="instructions"><strong>Quét trực tiếp bằng Chrome đang dùng</strong><p id="chromeConnection">${S.chromeConnected?`Chrome đã kết nối (v${esc(S.chromeVersion||'?')}) — mỗi lần bấm Quét sẽ đọc dữ liệu mới.`:'Cần tiện ích MarketLens để nút Quét điều khiển Chrome.'}</p><details><summary>Kết nối Chrome một lần</summary><ol><li><a href="/static/marketlens-chrome-extension.zip?v=1.3.7-host-permissions-01" download>Tải tiện ích MarketLens 1.3.7</a> và giải nén.</li><li>Mở <code>chrome://extensions</code>, bật Chế độ nhà phát triển, chọn <strong>Tải tiện ích đã giải nén</strong>, chọn thư mục <code>browser-extension</code>.</li><li>Mở lại ứng dụng này trong cùng Chrome và tải lại trang.</li></ol><p>Tiện ích đọc danh sách và từng trang sản phẩm trên Shopee khi bạn bấm Quét, rồi gửi kết quả về ứng dụng cục bộ.</p></details></div>
- <details><summary>Nhập HTML thủ công</summary>
+ ${canCollect()?` <details><summary>Nhập HTML thủ công</summary>
  ${panel('Nhập sản phẩm từ trình duyệt của bạn' ,'Dùng khi Chrome/Safari xem được shop nhưng cửa sổ bot bị chặn',
  `<div class="instructions"><ol><li>Mở <a href="${esc(d.shop.url)}" target="_blank" rel="noopener noreferrer">trang shop</a> trong trình duyệt thường dùng và chờ sản phẩm xuất hiện.</li><li>Cuộn để tải sản phẩm, nhấn <strong>Cmd + S</strong>, chọn định dạng <strong>HTML / Trang web, hoàn chỉnh</strong>.</li><li>Chọn tệp <strong>.html</strong> bên dưới và bấm <strong>Nhập sản phẩm từ HTML</strong>. Chỉ những sản phẩm có trong tệp được nhập.</li></ol></div>
  <form class="form" data-shop-html>
  <label for="savedShopUrl">Link shop đã lưu</label><input id="savedShopUrl" name="target_url" type="url" value="${esc(d.shop.url)}" required>
  <div class="form-row"><div><label for="savedShopRole">Phân loại dữ liệu</label><select id="savedShopRole" name="role"><option value="own">Shop đang phân tích</option><option value="market">Đối thủ / thị trường</option></select></div><div><label for="savedShopDate">Ngày lưu trang</label><input id="savedShopDate" name="snapshot_date" type="date" value="${localDate()}" required></div></div>
  <label for="savedShopFile">Tệp HTML của trang đang hiển thị sản phẩm</label><input id="savedShopFile" name="file" type="file" accept=".html,.htm,text/html" required>
- <button type="submit" class="btn btn-primary">Nhập sản phẩm từ HTML →</button></form>`)}</details>
+ <button type="submit" class="btn btn-primary">Nhập sản phẩm từ HTML →</button></form>`)}</details>`:''}
  <div class="import-grid">
  ${panel('Quét shop hoặc đối thủ','Thu thập thẻ sản phẩm hiện công khai trên trang được phép truy cập',
  `<form class="form" data-crawl><label>Link shop cần quét</label><input type="url" name="target_url" required value="${esc(d.shop.url)}" placeholder="https://shopee.vn/ten_shop">
  <div class="form-row"><div><label>Phân loại dữ liệu</label><select name="role"><option value="own">Shop đang phân tích</option><option value="market">Đối thủ / thị trường</option></select></div><div><label>Chế độ</label><select name="browser_mode"><option value="chrome" selected>Chrome đang dùng</option><option value="assisted">Chromium có hỗ trợ</option><option value="headless">Chromium chạy nền</option></select></div></div><label class="check-control"><input type="checkbox" name="read_details" checked> <span>Đọc chi tiết từng sản phẩm (Chrome)<small>Tự mở lần lượt từng sản phẩm, lưu ngay thông tin đã đọc.</small></span></label><button type="submit" class="btn btn-primary" ${!authorized||S.crawlSubmitting?'disabled':''}>${S.crawlSubmitting?'Đang quét...':'◉ Quét một lần →'}</button></form>
  <p class="fine-print">Chrome đọc danh sách shop trước, sau đó tự mở từng sản phẩm để lấy mô tả, hình ảnh, thông số, phân loại, giá và đánh giá hiển thị. Nếu Shopee yêu cầu đăng nhập hoặc xác minh, lượt đọc sẽ dừng và giữ dữ liệu đã lưu.</p>
  <p class="fine-print">Bỏ chọn đọc chi tiết để chỉ lấy danh sách nhanh. Không thể lấy doanh thu 30 ngày từ một lần quét.</p>`)}
- ${panel('Tự động quét định kỳ','Chạy tối đa một lần mỗi ngày cho từng shop, lưu snapshot để phân tích biến động',
+ ${canCollect()?panel('Tự động quét định kỳ','Chạy tối đa một lần mỗi ngày cho từng shop, lưu snapshot để phân tích biến động',
  `<form class="form" data-schedule><label>URL shop theo dõi</label><input type="url" name="target_url" value="${esc(d.shop.url)}" required>
  <div class="form-row"><div><label>Dữ liệu</label><select name="role"><option value="own">Shop đang chọn</option><option value="market">Đối thủ</option></select></div><div><label>Chu kỳ (giờ)</label><select name="interval_hours"><option value="24">24 giờ</option><option value="48">48 giờ</option><option value="168">7 ngày</option></select></div></div>
- <button type="submit" class="btn btn-primary" ${!authorized?'disabled':''}>Đặt lịch tự động →</button></form><p class="fine-print">Chỉ chạy khi server MarketLens đang bật. Lịch chạy nền và có thể thất bại nếu Shopee yêu cầu bạn thao tác trên trình duyệt. Lịch sẽ bắt đầu sau một chu kỳ; muốn quét ngay, dùng nút bên trái.</p>`)}
+ <button type="submit" class="btn btn-primary" ${!authorized?'disabled':''}>Đặt lịch tự động →</button></form><p class="fine-print">Chỉ chạy khi server MarketLens đang bật. Lịch chạy nền và có thể thất bại nếu Shopee yêu cầu bạn thao tác trên trình duyệt. Lịch sẽ bắt đầu sau một chu kỳ; muốn quét ngay, dùng nút bên trái.</p>`):''}
  </div>
- <div class="section-head"><h2>Lịch thu thập</h2></div><div id="crawlSchedules"><p class="muted">Đang kiểm tra lịch...</p></div>
+ ${canCollect()?`<div class="section-head"><h2>Lịch thu thập</h2></div><div id="crawlSchedules"><p class="muted">Đang kiểm tra lịch...</p></div>`:''}
  <div class="section-head"><h2>Lịch sử thực thi</h2></div><div id="crawlJobs"><p class="muted">Đang tải trạng thái...</p></div>
  <div class="instructions">Chọn shop riêng và bấm <strong>Quét một lần</strong>. Nếu chưa cài trình duyệt, chạy <code>python -m playwright install chromium</code>.</div>`;
 }
 async function refreshCrawlerLists(){
- if(!canCollect())return;
+ if(!canCrawlShop())return;
  if(!['crawler','competitors'].includes(S.view)||!S.shopId||S.crawlerRefreshing)return;
  S.crawlerRefreshing=true;
  const shopId=S.shopId;
@@ -407,7 +408,7 @@ $('viewContainer').addEventListener('submit',async e=>{
    return;
  }
  const crawl=e.target.closest('form[data-crawl]');const schedule=e.target.closest('form[data-schedule]');
- if(crawl||schedule){e.preventDefault();if(!canCollect())return toast('Thu thập và đặt lịch thuộc khu vực System.');const f=crawl||schedule;const b=f.querySelector('button[type=submit]');
+ if(crawl||schedule){e.preventDefault();if(!canCrawlShop()||schedule&&!canCollect())return toast('Đặt lịch tự động thuộc khu vực System.');const f=crawl||schedule;const b=f.querySelector('button[type=submit]');
  if(S.crawlSubmitting||S.competitor.discovering||(typeof marketState!=='undefined'&&marketState.busy))return;
  S.crawlSubmitting=true;S.crawlRun=crawl?{jobId:null,shopId:S.shopId,entryView:S.view,detailPhase:false,stopRequested:false}:null;b.disabled=true;
  const originalText=b.textContent;b.textContent='Đang gửi...';
@@ -475,21 +476,21 @@ function toggleShopModal(show){$('shopModal').classList.toggle('hidden',!show)}
 $('newShopButton').addEventListener('click',()=>toggleShopModal(true));
 $('closeShopModal').addEventListener('click',()=>toggleShopModal(false));$('cancelShop').addEventListener('click',()=>toggleShopModal(false));
 $('shopModal').addEventListener('click',e=>{if(e.target===$('shopModal'))toggleShopModal(false)});
-$('shopForm').addEventListener('submit',async e=>{e.preventDefault();try{let p=Object.fromEntries(new FormData(e.target));let s=await api('/api/shops',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});toggleShopModal(false);toast(canCollect()?'Đã tạo shop. Có thể nhập dữ liệu hoặc quét sản phẩm.':'Đã tạo shop và cấp quyền cho tài khoản của bạn. System sẽ cập nhật dữ liệu.');await loadShops(s.id);setView(canCollect()?'crawler':'myShops')}catch(err){toast(err.message)}});
+$('shopForm').addEventListener('submit',async e=>{e.preventDefault();try{let p=Object.fromEntries(new FormData(e.target));let s=await api('/api/shops',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});toggleShopModal(false);toast('Đã tạo shop. Hãy bấm Quét để thu thập sản phẩm.');await loadShops(s.id);setView(canCrawlShop()?'crawler':'myShops')}catch(err){toast(err.message)}});
 async function refreshCrawlerConfig(){
- if(!canCollect())return;
+ if(!canCrawlShop())return;
  try{S.crawler=await api('/api/crawl/config')}
  catch(err){S.crawler={enabled:false,error:'Không đọc được cấu hình bot: '+err.message}}
  render();
 }
 $('logoutButton')?.addEventListener('click',()=>window.MarketLensAuth?.logout().catch(error=>toast(error.message)));
-setInterval(()=>{if(canCollect()&&['crawler','competitors'].includes(S.view))refreshCrawlerLists()},7000);
+setInterval(()=>{if(canCrawlShop()&&['crawler','competitors'].includes(S.view))refreshCrawlerLists()},7000);
 async function initializeWorkspace(retry=false){try{
  if(window.MarketLensAuth){if(retry)await window.MarketLensAuth.refreshSession();await window.MarketLensAuth.ready;if(!window.MarketLensAuth.requireSession())return;const account=window.MarketLensAuth.session.account;const identity=$('authAccountName');if(identity)identity.textContent=account.username;const badge=$('authRoleBadge');if(badge)badge.textContent=account.role==='system'?'System':'User';document.querySelectorAll('[data-system-link]').forEach(link=>link.hidden=account.role!=='system');}
  const params=new URLSearchParams(location.search),requested=params.get('view');
  S.view=window.MarketLensRoutes?.defaultView(appArea())||'overview';
  await loadShops(params.get('shop_id')||undefined);
- if(canCollect()){await refreshCrawlerConfig();refreshChromeConnection();}
+ if(canCrawlShop()){await refreshCrawlerConfig();refreshChromeConnection();}
  setView(requested&&pages[requested]?requested:S.view);
  }catch(error){toast('Không kết nối được backend: '+error.message+' Bấm Làm mới để thử lại.');}}
 initializeWorkspace();
