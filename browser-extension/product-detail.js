@@ -77,7 +77,7 @@ export function inspectProductPage(options) {
   }
   summary ||= title.parentElement;
   const detail = {url: `https://shopee.vn/product/${actualIds[0]}/${actualIds[1]}`, name,
-    description: '', images: [], description_images: [], attributes: [], variants: [], categories: [],
+    description: '', video: '', images: [], description_images: [], attributes: [], variants: [], categories: [],
     price_text: '', rating_text: '', review_count_text: '', sold_text: '', stock_text: ''};
   const price = [...summary.querySelectorAll('section[aria-live="polite"], [data-sqe="price"], .product-price, .product-price-value')]
     .find(element => visible(element) && /[₫đ]|\bVND\b/.test(text(element)));
@@ -167,6 +167,15 @@ export function inspectProductPage(options) {
     url.hash = '';
     if (!imageSet.has(url.href)) { imageSet.add(url.href); detail.images.push(url.href); }
     if (detail.images.length >= 20) break;
+  }
+  // The gallery's first slot is often a product video: keep its public (non-blob) URL.
+  for (const node of [...gallery.querySelectorAll('video, video source')]) {
+    let url;
+    try { url = new URL(node.getAttribute('src') || node.src || node.currentSrc || '', current.href); }
+    catch { continue; }
+    if (url.protocol === 'https:' && !url.username && !url.password && /\.(?:susercontent\.com|shopee\.(?:vn|sg)|shopeemobile\.com)$/i.test(url.hostname) && url.href.length <= 2048) {
+      detail.video = url.href; break;
+    }
   }
   const groups = new Set();
   for (const heading of summary.querySelectorAll('h2, h3')) {

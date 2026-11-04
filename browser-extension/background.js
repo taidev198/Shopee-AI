@@ -1,7 +1,7 @@
 import {validateCategoryUrl, inspectCategoryPage} from './category.js';
 import {inspectShopPage, isAllowedAppUrl, validateShopUrl} from './collector.js';
 import {inspectProductPage, validateProductUrl} from './product-detail.js';
-import {validateListingDraft, validateTarget, targetForUrl, TARGETS, IMAGE_URL, MAX_IMAGE_BYTES} from './listing.js';
+import {validateListingDraft, validateTarget, targetForUrl, TARGETS, IMAGE_URL, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, VIDEO_CHUNK_BYTES} from './listing.js';
 import {inspectSearchPage, inspectProductSeller, inspectShopProfile, validateDiscoveryQuery, validateSellerLink} from './discovery.js';
 
 const MAX_PAGES = 5;
@@ -548,6 +548,21 @@ function handleSellerMessage(message, sender, sendResponse) {
       if (bytes.length > MAX_IMAGE_BYTES) return {ok: false, error: 'Ảnh quá lớn.'};
       const type = (response.headers.get('content-type') || 'image/jpeg').split(';')[0];
       return {ok: true, type: /^image\/(?:png|jpeg|webp)$/.test(type) ? type : 'image/jpeg', base64: toBase64(bytes)};
+    }
+    if (message.action === 'video') {
+      // Videos are large: hand them to the page in chunks (Range requests), never in one message.
+      const url = listingDraft?.video;
+      if (!url || !IMAGE_URL.test(url)) return {ok: false, error: 'Bản nháp không có video.'};
+      const offset = Math.max(0, Math.floor(Number(message.offset) || 0));
+      const response = await fetch(url, {credentials: 'omit', headers: {Range: `bytes=${offset}-${offset + VIDEO_CHUNK_BYTES - 1}`}});
+      if (!response.ok) return {ok: false, error: `Máy chủ video trả lỗi ${response.status}.`};
+      let bytes = new Uint8Array(await response.arrayBuffer());
+      const range = /\/(\d+)\s*$/.exec(response.headers.get('content-range') || '');
+      const total = range ? Number(range[1]) : response.status === 206 ? offset + bytes.length : bytes.length;
+      if (response.status === 200) bytes = bytes.slice(offset, offset + VIDEO_CHUNK_BYTES);  // server ignored Range
+      if (total > MAX_VIDEO_BYTES) return {ok: false, error: `Video ${Math.round(total / 1048576)}MB vượt giới hạn 30MB của Shopee.`};
+      const type = (response.headers.get('content-type') || 'video/mp4').split(';')[0];
+      return {ok: true, total, type: /^video\//.test(type) ? type : 'video/mp4', base64: toBase64(bytes)};
     }
     return {ok: false, error: 'Yêu cầu không hợp lệ.'};
   })().then(sendResponse, error => sendResponse({ok: false, error: error.message || String(error)}));

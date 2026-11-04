@@ -42,7 +42,7 @@
   function coverage(item) {
     const c = item.coverage || {};
     const parts = item.has_detail
-      ? [`${c.images || 0} ảnh`, c.description_images ? `${c.description_images} ảnh mô tả` : '', `${c.variants || 0} phân loại`, `${c.attributes || 0} thuộc tính`, c.brand ? 'có thương hiệu' : '', c.category ? 'có ngành hàng' : '', c.description ? 'có mô tả' : ''].filter(Boolean)
+      ? [`${c.images || 0} ảnh`, c.description_images ? `${c.description_images} ảnh mô tả` : '', c.video ? 'có video' : '', `${c.variants || 0} phân loại`, `${c.attributes || 0} thuộc tính`, c.brand ? 'có thương hiệu' : '', c.category ? 'có ngành hàng' : '', c.description ? 'có mô tả' : ''].filter(Boolean)
       : [];
     const missing = item.has_detail ? [!c.images && 'ảnh', !c.variants && 'phân loại', !c.brand && 'thương hiệu', !c.category && 'ngành hàng', !c.description && 'mô tả'].filter(Boolean) : [];
     return `${item.draft_id ? '<span class="badge">Đã có bản nháp</span> ' : ''}` +
@@ -78,6 +78,7 @@
       <label>Ngành hàng <input data-lc-field="category" value="${esc(draft.category)}"></label>
       <label>Mô tả <textarea data-lc-field="description" rows="5" maxlength="5000">${esc(draft.description)}</textarea></label>
       <div class="lc-images">${images || '<small>Chưa có ảnh (sản phẩm này chưa đọc chi tiết).</small>'}</div>
+      ${draft.video ? `<p class="lc-row"><small>🎬 Video: <a href="${esc(draft.video)}" target="_blank" rel="noopener noreferrer">xem video gốc</a> (tối đa 30MB, tự tải lên khi dùng tiện ích Shopee)</small> <button type="button" class="btn btn-soft btn-sm" data-lc-novideo="${esc(draft.id)}">Bỏ video</button></p>` : ''}
       ${fromDescription ? `<details><summary>Ảnh trong mô tả gốc (bấm + để thêm vào ảnh sản phẩm, tối đa 9 ảnh)</summary><div class="lc-images">${fromDescription}</div></details>` : ''}
       ${attributes ? `<p class="muted"><b>Thuộc tính:</b> ${attributes}</p>` : ''}${variants ? `<p class="muted"><b>Phân loại:</b> ${variants}</p>` : ''}
       <div class="lc-row"><button class="btn btn-soft btn-sm" data-lc-save="${esc(draft.id)}">Lưu</button>
@@ -215,7 +216,7 @@
     if (target.matches('select[data-lc-bulk]')) state.bulk[target.dataset.lcBulk] = target.value;
   });
   document.addEventListener('click', event => {
-    const button = event.target.closest('[data-lc-all],[data-lc-addimg],[data-lc-sdelete],[data-lc-dall],[data-lc-page],[data-lc-bulk-apply],[data-lc-bulk-delete],[data-lc-create],[data-lc-save],[data-lc-status],[data-lc-post],[data-lc-delete],[data-lc-img]');
+    const button = event.target.closest('[data-lc-all],[data-lc-novideo],[data-lc-addimg],[data-lc-sdelete],[data-lc-dall],[data-lc-page],[data-lc-bulk-apply],[data-lc-bulk-delete],[data-lc-create],[data-lc-save],[data-lc-status],[data-lc-post],[data-lc-delete],[data-lc-img]');
     if (!button) return;
     const d = button.dataset;
     if (d.lcDall !== undefined) {
@@ -248,6 +249,8 @@
         state.selected = new Set();
         state.message = `Đã xóa ${deleted} sản phẩm đã quét.`;
       });
+    } else if (d.lcNovideo) {
+      act(() => json(`/api/listings/drafts/${encodeURIComponent(d.lcNovideo)}?` + query(), 'PUT', {video: ''}));
     } else if (d.lcAddimg) {
       const [id, index] = d.lcAddimg.split(':'); const draft = draftById(id);
       const extra = list(draft?.desc_images).filter(url => !list(draft.images).includes(url))[Number(index)];

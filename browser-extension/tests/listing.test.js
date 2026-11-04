@@ -74,3 +74,9 @@ test('targets are whitelisted and recognised by seller-centre url', () => {
   assert.equal(targetForUrl('https://banhang.shopee.vn/portal/order'), null);
   assert.ok(TARGETS.tiktok.url.startsWith('https://seller-vn.tiktok.com/'));
 });
+
+test('draft video is kept only from Shopee hosts', () => {
+  assert.equal(validateListingDraft({name: 'a', video: 'https://down-vn.vod.susercontent.com/v/a.mp4'}).video, 'https://down-vn.vod.susercontent.com/v/a.mp4');
+  assert.equal(validateListingDraft({name: 'a', video: 'https://evil.example/a.mp4'}).video, '');
+  assert.equal(validateListingDraft({name: 'a'}).video, '');
+});

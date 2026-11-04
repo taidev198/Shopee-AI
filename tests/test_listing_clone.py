@@ -18,7 +18,7 @@ def seed_source(app, shop_id, with_detail=True):
                   (shop_id, 'market', 'Shop Đối Thủ', '55.1', 'Hộp đựng cơm 3 ngăn', 'Nhà cửa', 100000, 900,
                    'https://shopee.vn/product/55/1', '2026-10-15'))
         if with_detail:
-            detail = {'name': 'Hộp đựng cơm 3 ngăn cao cấp', 'description': 'Mô tả gốc\nDòng 2', 'images': [IMG, 'https://evil.example/x.jpg', IMG], 'description_images': [IMG.replace('1', '2'), 'https://evil.example/y.jpg'],
+            detail = {'name': 'Hộp đựng cơm 3 ngăn cao cấp', 'description': 'Mô tả gốc\nDòng 2', 'images': [IMG, 'https://evil.example/x.jpg', IMG], 'description_images': [IMG.replace('1', '2'), 'https://evil.example/y.jpg'], 'video': 'https://down-vn.vod.susercontent.com/v/clip.mp4',
                       'attributes': [{'name': 'Chất liệu', 'value': 'Nhựa PP'}], 'categories': ['Nhà cửa', 'Hộp'],
                       'variants': [{'name': 'Màu', 'options': ['Đỏ', 'Xanh']}, {'name': 'Size', 'options': ['S', 'L']}]}
             c.execute('''INSERT INTO product_details(shop_id,role,source_shop,sku,status,detail_json,collected_at,last_attempt_at)
@@ -49,7 +49,7 @@ def test_draft_copies_images_description_attributes_and_variants_and_drops_forei
     _, client, shop = clone
     source = client.get('/api/listings/sources', params={'shop_id': shop['id']}).json()[0]
     assert source['has_detail'] is True
-    assert source['coverage'] == {'images': 3, 'description_images': 2, 'variants': 2, 'attributes': 1, 'brand': False, 'category': True, 'description': True}
+    assert source['coverage'] == {'images': 3, 'description_images': 2, 'variants': 2, 'attributes': 1, 'video': True, 'brand': False, 'category': True, 'description': True}
     result = create(client, shop['id'], markup_pct=10)
     assert result.status_code == 200, result.text
     draft = result.json()['created'][0]
@@ -166,6 +166,9 @@ def test_delete_sources_removes_scan_data_but_keeps_drafts_and_user_scoping(clon
     _, client, shop = clone
     draft = create(client, shop['id']).json()['created'][0]
     assert draft['desc_images'] == [IMG.replace('1', '2')]
+    assert draft['video'] == 'https://down-vn.vod.susercontent.com/v/clip.mp4'
+    cleared = client.put(f"/api/listings/drafts/{draft['id']}", params={'shop_id': shop['id']}, json={'video': 'https://evil.example/v.mp4'}).json()
+    assert cleared['video'] == ''
     result = client.post('/api/listings/sources/delete', json={'shop_id': shop['id'], 'items': [{'source_shop': 'shop doi thu', 'sku': '55.1'}]})
     assert result.json() == {'deleted': 1}
     assert client.get('/api/listings/sources', params={'shop_id': shop['id']}).json() == []

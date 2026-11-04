@@ -706,6 +706,7 @@ class BrowserProductDetail(BaseModel):
     description: str = Field(default='', max_length=50000)
     images: list[str] = Field(default_factory=list, max_length=30)
     description_images: list[str] = Field(default_factory=list, max_length=30)
+    video: str = Field(default='', max_length=2048)
     attributes: list[ProductAttribute] = Field(default_factory=list, max_length=100)
     variants: list[ProductVariant] = Field(default_factory=list, max_length=20)
     categories: list[str] = Field(default_factory=list, max_length=20)
@@ -735,6 +736,13 @@ class BrowserProductDetail(BaseModel):
             if not valid:
                 raise ValueError('Ảnh sản phẩm phải có URL HTTPS công khai.')
         return values
+
+    @field_validator('video')
+    @classmethod
+    def public_video_url(cls, value):
+        if value and not (value.startswith('https://') and urlparse(value).hostname and not urlparse(value).username):
+            raise ValueError('Video sản phẩm phải có URL HTTPS công khai.')
+        return value
 
     @field_validator('categories')
     @classmethod

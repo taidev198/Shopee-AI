@@ -144,6 +144,27 @@
     input.dispatchEvent(new Event('change', {bubbles: true}));
     report.filled.push(`${transfer.files.length} ảnh`);
   }
+  // The video comes from the background in 3MB chunks and is put into the "Thêm video" file input.
+  async function attachVideo(draft, report) {
+    const input = [...document.querySelectorAll('input[type=file]')].find(item => /video|mp4/i.test(item.accept || ''));
+    if (!input) return report.missing.push('video (không thấy ô tải video)');
+    const parts = [];
+    let total = Infinity, offset = 0, type = 'video/mp4';
+    while (offset < total) {
+      const reply = await chrome.runtime.sendMessage({source: 'marketlens-seller', action: 'video', offset});
+      if (!reply?.ok) return report.missing.push(`video (${reply?.error || 'không tải được'})`);
+      total = reply.total; type = reply.type;
+      const bytes = Uint8Array.from(atob(reply.base64), char => char.charCodeAt(0));
+      if (!bytes.length) break;
+      parts.push(bytes); offset += bytes.length;
+    }
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(parts, 'marketlens-video.mp4', {type}));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', {bubbles: true}));
+    report.filled.push('video');
+    report.notes.push('Video cần vài phút để Shopee xử lý trước khi hiển thị.');
+  }
   async function fill(draft, panel, platform) {
     const report = {filled: [], missing: [], notes: []};
     const result = panel.querySelector('[data-result]');
@@ -171,6 +192,7 @@
     }
     if (draft.variants.length) report.notes.push('Phân loại hàng: tự thêm theo bảng bên dưới (Shopee kiểm tra chặt phần này).');
     if (draft.images.length) await attachImages(draft, report);
+    if (draft.video && platform === 'shopee') await attachVideo(draft, report);
     result.textContent =
       `Đã điền: ${report.filled.join(', ') || 'không có'}.` + (report.missing.length ? ` Chưa tìm thấy ô: ${report.missing.join(', ')} — hãy dán bằng nút Sao chép.` : '') +
       (report.notes.length ? ' ' + report.notes.join(' ') : '') + ' Kiểm tra ngành hàng, thuộc tính rồi tự bấm Đăng.';

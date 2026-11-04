@@ -18,6 +18,8 @@ export function targetForUrl(value) {
 }
 export const IMAGE_URL = /^https:\/\/[a-z0-9.-]+\.(?:susercontent\.com|shopee\.(?:vn|sg)|shopeemobile\.com)\//i;
 export const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 30 * 1024 * 1024;  // Shopee's own video limit
+export const VIDEO_CHUNK_BYTES = 3 * 1024 * 1024;
 
 const text = (value, max) => String(value ?? '').slice(0, max);
 const count = value => Math.max(0, Math.min(1_000_000, Math.round(Number(value) || 0)));
@@ -29,6 +31,7 @@ export function validateListingDraft(value) {
   if (!name) throw new Error('Bản nháp cần có tên sản phẩm.');
   const images = [...new Set((Array.isArray(value.images) ? value.images : []).map(item => String(item || '').trim())
     .filter(item => IMAGE_URL.test(item)))].slice(0, 9);
+  const video = IMAGE_URL.test(String(value.video || '').trim()) ? String(value.video).trim().slice(0, 2048) : '';
   const pairs = (list, a, b) => (Array.isArray(list) ? list : []).slice(0, 50)
     .map(item => ({[a]: text(item?.[a], 200).trim(), [b]: text(item?.[b], 2000).trim()})).filter(item => item[a] && item[b]);
   const variants = (Array.isArray(value.variants) ? value.variants : []).slice(0, 10).map(item => ({
@@ -38,7 +41,7 @@ export function validateListingDraft(value) {
   return {
     id: text(value.id, 80), name, description: text(value.description, 5000), category: text(value.category, 300),
     price: Number.isFinite(Number(value.price)) && Number(value.price) > 0 ? Math.round(Number(value.price)) : 0,
-    stock: count(value.stock), weight_g: count(value.weight_g), images,
+    stock: count(value.stock), weight_g: count(value.weight_g), images, video,
     attributes: pairs(value.attributes, 'name', 'value'), variants,
   };
 }

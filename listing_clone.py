@@ -60,6 +60,7 @@ class DraftUpdate(BaseModel):
     stock: int | None = Field(default=None, ge=0, le=1_000_000)
     weight_g: int | None = Field(default=None, ge=0, le=1_000_000)
     images: list[str] | None = Field(default=None, max_length=MAX_IMAGES)
+    video: str | None = Field(default=None, max_length=2048)
     attributes: list[dict] | None = Field(default=None, max_length=50)
     variants: list[dict] | None = Field(default=None, max_length=10)
     status: str | None = Field(default=None, pattern='^(draft|ready|posted)$')
@@ -112,6 +113,11 @@ def _clean_images(values):
     return out
 
 
+def _clean_video(value):
+    value = str(value or '').strip()
+    return value if IMAGE_HOST.match(value) and len(value) <= 2048 else ''
+
+
 def _clean_pairs(values, keys):
     out = []
     for item in values or []:
@@ -143,7 +149,7 @@ def draft_dict(row):
 
 def _coverage(row):
     """What a scanned product detail holds, so the UI can show what a draft will have."""
-    empty = {'images': 0, 'description_images': 0, 'variants': 0, 'attributes': 0, 'brand': False, 'category': False, 'description': False}
+    empty = {'images': 0, 'description_images': 0, 'variants': 0, 'attributes': 0, 'brand': False, 'category': False, 'description': False, 'video': False}
     if row is None or row['status'] != 'done':
         return empty
     try:
@@ -153,7 +159,7 @@ def _coverage(row):
     brand = any(_norm(item.get('name')) in ('brand', 'thuong_hieu') and str(item.get('value') or '').strip()
                 for item in detail.get('attributes') or [] if isinstance(item, dict))
     return {'images': len(detail.get('images') or []), 'description_images': len(detail.get('description_images') or []),
-            'brand': brand, 'variants': len(detail.get('variants') or []),
+            'video': bool(detail.get('video')), 'brand': brand, 'variants': len(detail.get('variants') or []),
             'attributes': len(detail.get('attributes') or []), 'category': bool(detail.get('categories')),
             'description': bool(str(detail.get('description') or '').strip())}
 
@@ -173,6 +179,8 @@ def install(app, db):
           UNIQUE(shop_id,source_role,source_shop,source_sku));
         CREATE INDEX IF NOT EXISTS idx_listing_drafts_shop ON listing_drafts(shop_id,created_at);
         ''')
+        if 'video' not in [row['name'] for row in c.execute('PRAGMA table_info(listing_drafts)')]:
+            c.execute("ALTER TABLE listing_drafts ADD COLUMN video TEXT NOT NULL DEFAULT ''")
         if 'desc_images_json' not in [row['name'] for row in c.execute('PRAGMA table_info(listing_drafts)')]:
             c.execute("ALTER TABLE listing_drafts ADD COLUMN desc_images_json TEXT NOT NULL DEFAULT '[]'")
 
@@ -268,14 +276,14 @@ def install(app, db):
                         continue
                     categories = detail.get('categories') or []
                     c.execute('''UPDATE listing_drafts SET source_url=?,name=?,description=?,category=?,images_json=?,attributes_json=?,
-                        variants_json=?,desc_images_json=?,updated_at=? WHERE id=? AND shop_id=?''',
+                        variants_json=?,desc_images_json=?,video=?,updated_at=? WHERE id=? AND shop_id=?''',
                               (observation['product_url'] or detail.get('url') or '',
                                (detail.get('name') or observation['name'])[:120], str(detail.get('description') or '')[:5000],
                                ' > '.join(str(value) for value in categories) or (observation['category'] or ''),
                                json.dumps(_clean_images(detail.get('images'))),
                                json.dumps(_clean_pairs(detail.get('attributes'), ('name', 'value'))),
                                json.dumps(_clean_variants(detail.get('variants'))),
-                               json.dumps(_clean_images(detail.get('description_images'))), now, existing['id'], payload.shop_id))
+                               json.dumps(_clean_images(detail.get('description_images'))), _clean_video(detail.get('video')), now, existing['id'], payload.shop_id))
                     updated.append(existing['id'])
                     continue
                 if existing:
@@ -288,8 +296,8 @@ def install(app, db):
                 draft_id = str(uuid.uuid4())
                 categories = detail.get('categories') or []
                 c.execute('''INSERT INTO listing_drafts(id,shop_id,source_role,source_shop,source_sku,source_url,name,description,
-                    category,price,stock,weight_g,images_json,attributes_json,variants_json,desc_images_json,status,created_at,updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    category,price,stock,weight_g,images_json,attributes_json,variants_json,desc_images_json,video,status,created_at,updated_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                           (draft_id, payload.shop_id, 'market', observation['source_shop'], item.sku,
                            observation['product_url'] or detail.get('url') or '',
                            (detail.get('name') or observation['name'])[:120], str(detail.get('description') or '')[:5000],
@@ -297,7 +305,7 @@ def install(app, db):
                            price, 0, 0, json.dumps(_clean_images(detail.get('images'))),
                            json.dumps(_clean_pairs(detail.get('attributes'), ('name', 'value'))),
                            json.dumps(_clean_variants(detail.get('variants'))),
-                           json.dumps(_clean_images(detail.get('description_images'))), 'draft', now, now))
+                           json.dumps(_clean_images(detail.get('description_images'))), _clean_video(detail.get('video')), 'draft', now, now))
                 created.append(draft_id)
             rows = [draft_dict(c.execute('SELECT * FROM listing_drafts WHERE id=?', (draft_id,)).fetchone()) for draft_id in created]
         return {'created': rows, 'skipped': skipped, 'updated': len(updated)}
@@ -343,6 +351,8 @@ def install(app, db):
                 value = json.dumps(_clean_pairs(value, ('name', 'value'))); key = 'attributes_json'
             elif key == 'variants':
                 value = json.dumps(_clean_variants(value)); key = 'variants_json'
+            elif key == 'video':
+                value = _clean_video(value)
             elif value is None and key in ('name', 'description', 'category', 'stock', 'weight_g', 'status'):
                 raise HTTPException(422, f'Trường {key} không được để trống.')
             columns.append(f'{key}=?')
