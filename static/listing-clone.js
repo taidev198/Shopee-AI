@@ -22,15 +22,28 @@
     finally { if (shopId === state.shopId) { state.loading = false; redraw(); } }
   }
 
+  function scanForm() {
+    const run = typeof S !== 'undefined' ? S.crawlRun : null, busy = typeof S !== 'undefined' && S.crawlSubmitting;
+    const allowed = window.MarketLensAuth?.canCrawlShop !== false;
+    return `<section class="panel"><div class="panel-head"><div><h3>1. Quét shop cần sao chép</h3>
+      <p class="panel-sub">Dán link shop, Chrome sẽ đọc toàn bộ sản phẩm kèm ảnh, mô tả, thuộc tính, phân loại (giống mục Thu thập shop). Cần cài tiện ích MarketLens trong Chrome và có thể mất vài phút.</p></div></div>
+      <form class="form" data-crawl data-lc-scan><label>Link shop</label>
+      <div class="lc-row"><input type="url" name="target_url" required placeholder="https://shopee.vn/ten_shop" style="flex:1;min-width:240px">
+      <input type="hidden" name="role" value="market"><input type="hidden" name="browser_mode" value="chrome">
+      <button type="submit" class="btn btn-primary" ${!allowed || busy ? 'disabled' : ''}>${busy ? 'Đang quét...' : '◉ Quét toàn bộ sản phẩm →'}</button></div>
+      <label class="check-control"><input type="checkbox" name="read_details" checked> <span>Đọc chi tiết từng sản phẩm (cần để có ảnh và mô tả)</span></label></form>
+      <div class="crawl-progress"><p id="crawlFeedback" role="status" aria-live="polite">${esc(run?.message || '')}</p><progress id="crawlDetailProgress" class="${run?.detailPhase ? '' : 'hidden'}" max="${Math.max(1, run?.total || 1)}" value="${(run?.completed || 0) + (run?.failed || 0)}" aria-label="Tiến độ đọc chi tiết sản phẩm"></progress><button type="button" id="stopCrawlDetails" class="btn btn-soft btn-sm ${busy && run?.detailPhase ? '' : 'hidden'}" ${run?.stopRequested ? 'disabled' : ''}>${run?.stopRequested ? 'Đang dừng sau sản phẩm hiện tại...' : 'Dừng sau sản phẩm hiện tại'}</button></div></section>`;
+  }
+
   function sourceTable() {
     const rows = state.sources.map(item => `<tr><td><input type="checkbox" data-lc-pick="${esc(key(item))}" ${state.selected.has(key(item)) ? 'checked' : ''} ${item.draft_id ? 'disabled' : ''} aria-label="Chọn ${esc(item.name)}"></td>
       <td class="product-name">${esc(item.name)}</td><td>${esc(item.source_shop)}</td><td>${money(item.price)}</td>
       <td>${item.draft_id ? '<span class="badge">Đã có bản nháp</span>' : item.has_detail ? '<span class="badge">Đủ ảnh &amp; mô tả</span>' : '<span class="badge">Thiếu chi tiết</span>'}</td></tr>`).join('');
-    return `<section class="panel"><div class="panel-head"><div><h3>1. Chọn sản phẩm của shop khác</h3>
-      <p class="panel-sub">Lấy từ dữ liệu đã thu thập ở mục Thu thập shop. Bật “Đọc chi tiết từng sản phẩm” khi thu thập để có đủ ảnh và mô tả.</p></div></div>
+    return `<section class="panel"><div class="panel-head"><div><h3>2. Chọn sản phẩm để sao chép</h3>
+      <p class="panel-sub">Danh sách gồm sản phẩm đã quét ở bước 1 (hoặc ở mục Thu thập shop với loại dữ liệu “Đối thủ / thị trường”).</p></div></div>
       <form data-lc-search class="lc-row"><input type="search" name="q" value="${esc(state.q)}" placeholder="Tìm theo tên sản phẩm hoặc shop"><button class="btn btn-soft btn-sm" type="submit">Tìm</button></form>
       ${rows ? `<div class="table-wrap"><table class="data-table"><thead><tr><th></th><th>SẢN PHẨM</th><th>SHOP GỐC</th><th>GIÁ</th><th>DỮ LIỆU</th></tr></thead><tbody>${rows}</tbody></table></div>`
-        : '<div class="instructions">Chưa có sản phẩm của shop khác. Vào Thu thập shop, nhập URL shop đối thủ và quét trước.</div>'}
+        : '<div class="instructions">Chưa có sản phẩm của shop khác. Dán link shop ở bước 1 và quét trước.</div>'}
       <div class="lc-row"><label>Chỉnh giá bán <input type="number" data-lc-markup value="${esc(state.markup)}" min="-90" max="500" step="1" style="width:5rem">% so với giá gốc</label>
       <button class="btn btn-primary btn-sm" data-lc-create ${state.selected.size && !state.busy ? '' : 'disabled'}>Tạo bản nháp (${state.selected.size})</button></div></section>`;
   }
@@ -57,11 +70,11 @@
 
   function draftsSection() {
     const ready = state.drafts.filter(item => item.status === 'ready').length;
-    return `<section class="panel"><div class="panel-head"><div><h3>2. Bản nháp đăng bán (${state.drafts.length})</h3>
+    return `<section class="panel"><div class="panel-head"><div><h3>3. Bản nháp đăng bán (${state.drafts.length})</h3>
       <p class="panel-sub">Chỉnh lại tên, giá, mô tả cho phù hợp shop của bạn rồi chọn một cách đăng.</p></div>
       <div class="lc-row"><a class="btn btn-soft btn-sm ${state.drafts.length ? '' : 'disabled'}" href="/api/listings/export?${esc(query({}).toString())}" data-lc-export>Tải file Mass Upload (.xlsx)</a>
       ${ready ? `<a class="btn btn-soft btn-sm" href="/api/listings/export?${esc(query({ids: state.drafts.filter(item => item.status === 'ready').map(item => item.id).join(',')}).toString())}">Chỉ ${ready} bản sẵn sàng</a>` : ''}</div></div>
-      ${state.drafts.map(draftCard).join('') || '<div class="instructions">Chưa có bản nháp. Chọn sản phẩm ở bước 1.</div>'}</section>`;
+      ${state.drafts.map(draftCard).join('') || '<div class="instructions">Chưa có bản nháp. Chọn sản phẩm ở bước 2.</div>'}</section>`;
   }
 
   function renderListings() {
@@ -74,7 +87,7 @@
       <h2>Đăng sản phẩm từ shop khác lên shop của bạn</h2>
       <p><b>Lưu ý bản quyền:</b> ảnh và mô tả là nội dung của shop gốc. Shopee có thể gỡ listing hoặc xử lý vi phạm sở hữu trí tuệ nếu shop gốc báo cáo. Bạn chịu trách nhiệm về nội dung đăng; nên đổi ảnh và viết lại mô tả.</p>
       ${state.message ? `<p class="lc-ok">${esc(state.message)}</p>` : ''}${state.error ? `<p class="lc-err">${esc(state.error)}</p>` : ''}${state.loading ? '<p>Đang tải…</p>' : ''}</section>
-      ${sourceTable()}${draftsSection()}</div>`;
+      ${scanForm()}${sourceTable()}${draftsSection()}</div>`;
   }
 
   async function act(operation, message) {
@@ -97,6 +110,15 @@
   }
   const save = id => json(`/api/listings/drafts/${encodeURIComponent(id)}?` + query(), 'PUT', cardValues(id));
 
+  // The shared crawl handler in app.js runs the scan; refresh the product list once it finishes.
+  document.addEventListener('submit', event => {
+    if (!event.target.matches('[data-lc-scan]')) return;
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const running = typeof S !== 'undefined' && S.crawlSubmitting;
+      if (!running && Date.now() - started > 1500 || Date.now() - started > 3 * 3600 * 1000) { clearInterval(timer); load(); }
+    }, 1000);
+  });
   document.addEventListener('submit', event => {
     if (!event.target.matches('[data-lc-search]')) return;
     event.preventDefault();

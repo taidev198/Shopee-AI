@@ -50,3 +50,12 @@ test('manifest limits Seller Centre access to the add-product pages', async () =
   assert.deepEqual(seller.matches, ['https://banhang.shopee.vn/portal/product/*']);
   assert.ok(manifest.permissions.includes('storage'));
 });
+
+test('copy screen embeds the shared Chrome shop scan as market data with details enabled', async () => {
+  const source = await readFile(new URL('../../static/listing-clone.js', import.meta.url), 'utf8');
+  assert.match(source, /<form class="form" data-crawl data-lc-scan>/);
+  assert.match(source, /name="role" value="market"/);
+  assert.match(source, /name="browser_mode" value="chrome"/);
+  assert.equal((source.match(/name="read_details"/g) || []).length, 1);
+  for (const id of ['crawlFeedback', 'crawlDetailProgress', 'stopCrawlDetails']) assert.ok(source.includes(`id="${id}"`));
+});
