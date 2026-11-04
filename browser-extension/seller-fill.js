@@ -123,6 +123,15 @@
   }
   function guessNumeric(list, key, used) {
     const free = list.filter(item => item.kind === 'input' && !used.has(item.element));
+    // Seller Centre puts neither label near these inputs; use their position: stock holds the default "0",
+    // price is the empty input right before it, weight is the one with the "gr" suffix.
+    const all = list.filter(item => item.kind === 'input');
+    const stockIndex = all.findIndex(item => item.element.value === '0');
+    if (key === 'stock' && stockIndex >= 0 && !used.has(all[stockIndex].element)) return all[stockIndex].element;
+    if (key === 'price' && stockIndex > 0 && all[stockIndex - 1].element.value === '' && !used.has(all[stockIndex - 1].element)) {
+      const byPrefix = free.find(item => /^d$|^d\s|\sd$/.test(nearText(item.element)))?.element;
+      return byPrefix || all[stockIndex - 1].element;
+    }
     if (key === 'price') return free.find(item => /^d$|^d\s|\sd$/.test(nearText(item.element)))?.element || null;
     if (key === 'weight') return free.find(item => /\bgr?\b|\bg$|\bkg\b/.test(nearText(item.element)))?.element || null;
     return null;
