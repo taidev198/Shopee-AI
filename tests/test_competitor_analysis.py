@@ -273,7 +273,7 @@ def test_own_scan_default_still_reads_every_product(analysis_app):
     assert listing['details_sampled'] is False
 
 
-@pytest.mark.parametrize('limit', [0, 151])
+@pytest.mark.parametrize('limit', [0, 1001])
 def test_invalid_detail_limit_is_rejected(analysis_app, limit):
     _, client, shop = analysis_app
     response = client.post('/api/crawl/jobs', json={

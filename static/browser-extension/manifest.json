@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MarketLens — Đọc sản phẩm Shopee",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Đọc thẻ sản phẩm công khai trong Chrome khi bạn bấm Quét sản phẩm tại MarketLens trên máy này.",
   "permissions": [
     "scripting",

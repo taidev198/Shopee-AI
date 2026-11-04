@@ -37,6 +37,12 @@ class SourceRef(BaseModel):
     sku: str = Field(min_length=1, max_length=200)
 
 
+class SourceDelete(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    shop_id: str
+    items: list[SourceRef] = Field(min_length=1, max_length=1000)
+
+
 class DraftCreate(BaseModel):
     model_config = ConfigDict(extra='forbid')
     shop_id: str
@@ -129,21 +135,24 @@ def _clean_variants(values):
 
 def draft_dict(row):
     data = dict(row)
-    for key in ('images', 'attributes', 'variants'):
-        data[key] = json.loads(data.pop(key + '_json') or '[]')
+    for key in ('images', 'attributes', 'variants', 'desc_images'):
+        data[key] = json.loads(data.pop(key + '_json', None) or '[]')
     return data
 
 
 def _coverage(row):
     """What a scanned product detail holds, so the UI can show what a draft will have."""
-    empty = {'images': 0, 'variants': 0, 'attributes': 0, 'category': False, 'description': False}
+    empty = {'images': 0, 'description_images': 0, 'variants': 0, 'attributes': 0, 'brand': False, 'category': False, 'description': False}
     if row is None or row['status'] != 'done':
         return empty
     try:
         detail = json.loads(row['detail_json'] or '{}')
     except ValueError:
         return empty
-    return {'images': len(detail.get('images') or []), 'variants': len(detail.get('variants') or []),
+    brand = any(_norm(item.get('name')) in ('brand', 'thuong_hieu') and str(item.get('value') or '').strip()
+                for item in detail.get('attributes') or [] if isinstance(item, dict))
+    return {'images': len(detail.get('images') or []), 'description_images': len(detail.get('description_images') or []),
+            'brand': brand, 'variants': len(detail.get('variants') or []),
             'attributes': len(detail.get('attributes') or []), 'category': bool(detail.get('categories')),
             'description': bool(str(detail.get('description') or '').strip())}
 
@@ -163,6 +172,8 @@ def install(app, db):
           UNIQUE(shop_id,source_role,source_shop,source_sku));
         CREATE INDEX IF NOT EXISTS idx_listing_drafts_shop ON listing_drafts(shop_id,created_at);
         ''')
+        if 'desc_images_json' not in [row['name'] for row in c.execute('PRAGMA table_info(listing_drafts)')]:
+            c.execute("ALTER TABLE listing_drafts ADD COLUMN desc_images_json TEXT NOT NULL DEFAULT '[]'")
 
     def require_shop(c, shop_id):
         if not c.execute('SELECT 1 FROM shops WHERE id=?', (shop_id,)).fetchone():
@@ -211,6 +222,24 @@ def install(app, db):
         rows.sort(key=lambda item: (item['sold_total'] or 0), reverse=True)
         return rows[:limit]
 
+    @router.post('/sources/delete')
+    def delete_sources(payload: SourceDelete):
+        """Remove scanned products (and their details) so a fresh scan replaces them; drafts are kept."""
+        removed = 0
+        with db() as c:
+            require_shop(c, payload.shop_id)
+            for item in payload.items:
+                wanted = _norm(item.source_shop)
+                for row in c.execute("SELECT id,source_shop FROM observations WHERE shop_id=? AND role='market' AND sku=?", (payload.shop_id, item.sku)).fetchall():
+                    if _norm(row['source_shop']) == wanted:
+                        c.execute('DELETE FROM observations WHERE id=?', (row['id'],))
+                        removed += 1
+                for row in c.execute("SELECT source_shop FROM product_details WHERE shop_id=? AND role='market' AND sku=?", (payload.shop_id, item.sku)).fetchall():
+                    if _norm(row['source_shop']) == wanted:
+                        c.execute("DELETE FROM product_details WHERE shop_id=? AND role='market' AND source_shop=? AND sku=?",
+                                  (payload.shop_id, row['source_shop'], item.sku))
+        return {'deleted': removed}
+
     @router.get('/drafts')
     def list_drafts(shop_id: str):
         with db() as c:
@@ -241,15 +270,16 @@ def install(app, db):
                 draft_id = str(uuid.uuid4())
                 categories = detail.get('categories') or []
                 c.execute('''INSERT INTO listing_drafts(id,shop_id,source_role,source_shop,source_sku,source_url,name,description,
-                    category,price,stock,weight_g,images_json,attributes_json,variants_json,status,created_at,updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    category,price,stock,weight_g,images_json,attributes_json,variants_json,desc_images_json,status,created_at,updated_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                           (draft_id, payload.shop_id, 'market', observation['source_shop'], item.sku,
                            observation['product_url'] or detail.get('url') or '',
                            (detail.get('name') or observation['name'])[:120], str(detail.get('description') or '')[:5000],
                            ' > '.join(str(value) for value in categories) or (observation['category'] or ''),
                            price, 0, 0, json.dumps(_clean_images(detail.get('images'))),
                            json.dumps(_clean_pairs(detail.get('attributes'), ('name', 'value'))),
-                           json.dumps(_clean_variants(detail.get('variants'))), 'draft', now, now))
+                           json.dumps(_clean_variants(detail.get('variants'))),
+                           json.dumps(_clean_images(detail.get('description_images'))), 'draft', now, now))
                 created.append(draft_id)
             rows = [draft_dict(c.execute('SELECT * FROM listing_drafts WHERE id=?', (draft_id,)).fetchone()) for draft_id in created]
         return {'created': rows, 'skipped': skipped}

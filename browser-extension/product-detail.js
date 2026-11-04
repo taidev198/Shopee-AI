@@ -77,7 +77,7 @@ export function inspectProductPage(options) {
   }
   summary ||= title.parentElement;
   const detail = {url: `https://shopee.vn/product/${actualIds[0]}/${actualIds[1]}`, name,
-    description: '', images: [], attributes: [], variants: [], categories: [],
+    description: '', images: [], description_images: [], attributes: [], variants: [], categories: [],
     price_text: '', rating_text: '', review_count_text: '', sold_text: '', stock_text: ''};
   const price = [...summary.querySelectorAll('section[aria-live="polite"], [data-sqe="price"], .product-price, .product-price-value')]
     .find(element => visible(element) && /[₫đ]|\bVND\b/.test(text(element)));
@@ -107,6 +107,18 @@ export function inspectProductPage(options) {
     const content = followingContent(descHeading);
     if (content && !content.contains(specHeading) && !content.querySelector('h1, h2')) {
       detail.description = String(content.innerText || '').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').trim().slice(0, 20000);
+      // Pictures embedded in the description (size charts, details) are kept separately from the gallery.
+      const seenDescription = new Set();
+      for (const img of content.querySelectorAll('img')) {
+        let url;
+        try { url = new URL(img.getAttribute('src') || img.getAttribute('data-src') || img.currentSrc || '', current.href); }
+        catch { continue; }
+        if (url.protocol !== 'https:' || url.username || url.password || !/\.(?:susercontent\.com|shopee\.(?:vn|sg)|shopeemobile\.com)$/i.test(url.hostname) ||
+            !/\/file\//.test(url.pathname)) continue;
+        url.hash = '';
+        if (!seenDescription.has(url.href)) { seenDescription.add(url.href); detail.description_images.push(url.href); }
+        if (detail.description_images.length >= 20) break;
+      }
     }
   }
   if (specHeading) {

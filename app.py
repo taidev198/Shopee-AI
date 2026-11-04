@@ -631,7 +631,7 @@ class CrawlRequest(BaseModel):
     interactive: bool = False
     browser: Literal['playwright', 'chrome'] = 'playwright'
     read_details: bool = False
-    detail_limit: int = Field(default=150, ge=1, le=150)
+    detail_limit: int = Field(default=150, ge=1, le=1000)
 
 
 class BrowserProductCard(BaseModel):
@@ -705,6 +705,7 @@ class BrowserProductDetail(BaseModel):
     name: str = Field(min_length=1, max_length=500)
     description: str = Field(default='', max_length=50000)
     images: list[str] = Field(default_factory=list, max_length=30)
+    description_images: list[str] = Field(default_factory=list, max_length=30)
     attributes: list[ProductAttribute] = Field(default_factory=list, max_length=100)
     variants: list[ProductVariant] = Field(default_factory=list, max_length=20)
     categories: list[str] = Field(default_factory=list, max_length=20)
@@ -721,7 +722,7 @@ class BrowserProductDetail(BaseModel):
             raise ValueError('Chi tiết phải thuộc trang sản phẩm Shopee công khai.')
         return value
 
-    @field_validator('images')
+    @field_validator('images', 'description_images')
     @classmethod
     def public_image_urls(cls, values):
         for value in values:

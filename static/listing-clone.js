@@ -28,10 +28,10 @@
     const run = typeof S !== 'undefined' ? S.crawlRun : null, busy = typeof S !== 'undefined' && S.crawlSubmitting;
     const allowed = window.MarketLensAuth?.canCrawlShop !== false;
     return `<section class="panel"><div class="panel-head"><div><h3>1. Quét shop cần sao chép</h3>
-      <p class="panel-sub">Dán link shop, Chrome sẽ đọc toàn bộ sản phẩm kèm ảnh, mô tả, thuộc tính, phân loại (giống mục Thu thập shop). Cần cài tiện ích MarketLens trong Chrome và có thể mất vài phút.</p></div></div>
+      <p class="panel-sub">Dán link shop, Chrome sẽ đọc toàn bộ sản phẩm kèm ảnh, mô tả, ảnh trong mô tả, thuộc tính, thương hiệu, phân loại. Quét lại shop sẽ ghi đè dữ liệu cũ của các sản phẩm đó. Cần cài tiện ích MarketLens trong Chrome và có thể mất vài phút.</p></div></div>
       <form class="form" data-crawl data-lc-scan><label>Link shop</label>
       <div class="lc-row"><input type="url" name="target_url" required placeholder="https://shopee.vn/ten_shop" style="flex:1;min-width:240px">
-      <input type="hidden" name="role" value="market"><input type="hidden" name="browser_mode" value="chrome">
+      <input type="hidden" name="role" value="market"><input type="hidden" name="browser_mode" value="chrome"><input type="hidden" name="detail_limit" value="1000">
       <button type="submit" class="btn btn-primary" ${!allowed || busy ? 'disabled' : ''}>${busy ? 'Đang quét...' : '◉ Quét toàn bộ sản phẩm →'}</button></div>
       <label class="check-control"><input type="checkbox" name="read_details" checked> <span>Đọc chi tiết từng sản phẩm (cần để có ảnh và mô tả)</span></label></form>
       <div class="crawl-progress"><p id="crawlFeedback" role="status" aria-live="polite">${esc(run?.message || '')}</p><progress id="crawlDetailProgress" class="${run?.detailPhase ? '' : 'hidden'}" max="${Math.max(1, run?.total || 1)}" value="${(run?.completed || 0) + (run?.failed || 0)}" aria-label="Tiến độ đọc chi tiết sản phẩm"></progress><button type="button" id="stopCrawlDetails" class="btn btn-soft btn-sm ${busy && run?.detailPhase ? '' : 'hidden'}" ${run?.stopRequested ? 'disabled' : ''}>${run?.stopRequested ? 'Đang dừng sau sản phẩm hiện tại...' : 'Dừng sau sản phẩm hiện tại'}</button></div></section>`;
@@ -41,9 +41,9 @@
   function coverage(item) {
     const c = item.coverage || {};
     const parts = item.has_detail
-      ? [`${c.images || 0} ảnh`, `${c.variants || 0} phân loại`, `${c.attributes || 0} thuộc tính`, c.category ? 'có ngành hàng' : '', c.description ? 'có mô tả' : ''].filter(Boolean)
+      ? [`${c.images || 0} ảnh`, c.description_images ? `${c.description_images} ảnh mô tả` : '', `${c.variants || 0} phân loại`, `${c.attributes || 0} thuộc tính`, c.brand ? 'có thương hiệu' : '', c.category ? 'có ngành hàng' : '', c.description ? 'có mô tả' : ''].filter(Boolean)
       : [];
-    const missing = item.has_detail ? [!c.images && 'ảnh', !c.variants && 'phân loại', !c.category && 'ngành hàng', !c.description && 'mô tả'].filter(Boolean) : [];
+    const missing = item.has_detail ? [!c.images && 'ảnh', !c.variants && 'phân loại', !c.brand && 'thương hiệu', !c.category && 'ngành hàng', !c.description && 'mô tả'].filter(Boolean) : [];
     return `${item.draft_id ? '<span class="badge">Đã có bản nháp</span> ' : ''}` +
       (item.has_detail ? `<small>${esc(parts.join(' · '))}</small>${missing.length ? `<br><small class="lc-missing">Thiếu: ${esc(missing.join(', '))}</small>` : ''}` : '<span class="badge">Thiếu chi tiết</span>');
   }
@@ -54,7 +54,7 @@
       <td>${coverage(item)}</td></tr>`).join('');
     return `<section class="panel"><div class="panel-head"><div><h3>2. Chọn sản phẩm để sao chép</h3>
       <p class="panel-sub">Danh sách gồm sản phẩm đã quét ở bước 1 (hoặc ở mục Thu thập shop với loại dữ liệu “Đối thủ / thị trường”).</p></div></div>
-      <div class="lc-row"><button type="button" class="btn btn-soft btn-sm" data-lc-all="1">Chọn tất cả</button><button type="button" class="btn btn-soft btn-sm" data-lc-all="0">Bỏ chọn tất cả</button><small>${state.sources.filter(item => !item.draft_id).length} sản phẩm chưa có bản nháp</small></div>
+      <div class="lc-row"><button type="button" class="btn btn-soft btn-sm" data-lc-all="1">Chọn tất cả</button><button type="button" class="btn btn-soft btn-sm" data-lc-all="0">Bỏ chọn tất cả</button><button type="button" class="btn btn-white btn-sm" data-lc-sdelete="1" ${state.selected.size && !state.busy ? '' : 'disabled'}>Xóa ${state.selected.size} sản phẩm đã chọn</button><small>${state.sources.filter(item => !item.draft_id).length} sản phẩm chưa có bản nháp</small></div>
       <form data-lc-search class="lc-row"><input type="search" name="q" value="${esc(state.q)}" placeholder="Tìm theo tên sản phẩm hoặc shop"><button class="btn btn-soft btn-sm" type="submit">Tìm</button></form>
       ${rows ? `<div class="table-wrap"><table class="data-table"><thead><tr><th></th><th>SẢN PHẨM</th><th>SHOP GỐC</th><th>GIÁ</th><th>DỮ LIỆU</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : '<div class="instructions">Chưa có sản phẩm của shop khác. Dán link shop ở bước 1 và quét trước.</div>'}
@@ -64,6 +64,7 @@
 
   function draftCard(draft) {
     const images = list(draft.images).map((url, index) => `<span class="lc-img"><img src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer"><button type="button" data-lc-img="${esc(draft.id)}:${index}" title="Bỏ ảnh">×</button></span>`).join('');
+    const fromDescription = list(draft.desc_images).filter(url => !list(draft.images).includes(url)).map((url, index) => `<span class="lc-img"><img src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer"><button type="button" data-lc-addimg="${esc(draft.id)}:${index}" title="Thêm vào ảnh sản phẩm">+</button></span>`).join('');
     const variants = list(draft.variants).map(item => `${esc(item.name)}: ${esc(list(item.options).join(', '))}`).join(' · ');
     const attributes = list(draft.attributes).map(item => `${esc(item.name)}: ${esc(item.value)}`).join(' · ');
     return `<article class="panel lc-draft" data-lc-draft="${esc(draft.id)}"><div class="lc-row"><input type="checkbox" data-lc-dpick="${esc(draft.id)}" ${state.draftSel.has(draft.id) ? 'checked' : ''} aria-label="Chọn bản nháp" style="width:auto"><strong>${draft.status === 'ready' ? '✅ Sẵn sàng' : draft.status === 'posted' ? '📦 Đã đăng' : '✎ Nháp'}</strong>
@@ -75,6 +76,7 @@
       <label>Ngành hàng <input data-lc-field="category" value="${esc(draft.category)}"></label>
       <label>Mô tả <textarea data-lc-field="description" rows="5" maxlength="5000">${esc(draft.description)}</textarea></label>
       <div class="lc-images">${images || '<small>Chưa có ảnh (sản phẩm này chưa đọc chi tiết).</small>'}</div>
+      ${fromDescription ? `<details><summary>Ảnh trong mô tả gốc (bấm + để thêm vào ảnh sản phẩm, tối đa 9 ảnh)</summary><div class="lc-images">${fromDescription}</div></details>` : ''}
       ${attributes ? `<p class="muted"><b>Thuộc tính:</b> ${attributes}</p>` : ''}${variants ? `<p class="muted"><b>Phân loại:</b> ${variants}</p>` : ''}
       <div class="lc-row"><button class="btn btn-soft btn-sm" data-lc-save="${esc(draft.id)}">Lưu</button>
         <button class="btn btn-soft btn-sm" data-lc-status="${esc(draft.id)}:${draft.status === 'ready' ? 'draft' : 'ready'}">${draft.status === 'ready' ? 'Bỏ đánh dấu' : 'Đánh dấu sẵn sàng'}</button>
@@ -192,7 +194,7 @@
     if (target.matches('select[data-lc-bulk]')) state.bulk[target.dataset.lcBulk] = target.value;
   });
   document.addEventListener('click', event => {
-    const button = event.target.closest('[data-lc-all],[data-lc-dall],[data-lc-page],[data-lc-bulk-apply],[data-lc-bulk-delete],[data-lc-create],[data-lc-save],[data-lc-status],[data-lc-post],[data-lc-delete],[data-lc-img]');
+    const button = event.target.closest('[data-lc-all],[data-lc-addimg],[data-lc-sdelete],[data-lc-dall],[data-lc-page],[data-lc-bulk-apply],[data-lc-bulk-delete],[data-lc-create],[data-lc-save],[data-lc-status],[data-lc-post],[data-lc-delete],[data-lc-img]');
     if (!button) return;
     const d = button.dataset;
     if (d.lcDall !== undefined) {
@@ -216,6 +218,21 @@
         state.message = remove ? `Đã xóa ${result.deleted} bản nháp.` : `Đã cập nhật ${result.updated} bản nháp.`;
         if (remove) state.draftSel = new Set();
       });
+    } else if (d.lcSdelete !== undefined) {
+      const items = state.sources.filter(item => state.selected.has(key(item))).map(item => ({source_shop: item.source_shop, sku: item.sku}));
+      if (!items.length || !confirm(`Xóa ${items.length} sản phẩm đã quét khỏi danh sách? Quét lại shop để lấy bản mới nhất. Bản nháp đã tạo được giữ nguyên.`)) return;
+      act(async () => {
+        let deleted = 0;
+        for (let offset = 0; offset < items.length; offset += 500) deleted += (await json('/api/listings/sources/delete', 'POST', {shop_id: state.shopId, items: items.slice(offset, offset + 500)})).deleted;
+        state.selected = new Set();
+        state.message = `Đã xóa ${deleted} sản phẩm đã quét.`;
+      });
+    } else if (d.lcAddimg) {
+      const [id, index] = d.lcAddimg.split(':'); const draft = draftById(id);
+      const extra = list(draft?.desc_images).filter(url => !list(draft.images).includes(url))[Number(index)];
+      if (!extra) return;
+      if (list(draft.images).length >= 9) { state.error = 'Mỗi sản phẩm tối đa 9 ảnh; bỏ bớt ảnh trước khi thêm.'; redraw(); return; }
+      act(() => json(`/api/listings/drafts/${encodeURIComponent(id)}?` + query(), 'PUT', {images: [...list(draft.images), extra]}));
     } else if (d.lcAll !== undefined) {
       state.selected = d.lcAll === '1' ? new Set(state.sources.filter(item => !item.draft_id).map(key)) : new Set();
       redraw();
@@ -240,7 +257,7 @@
       const [postId, platform] = d.lcPost.split(':');
       const name = platform === 'tiktok' ? 'TikTok Shop Seller Center' : 'Kênh Người Bán Shopee';
       act(async () => {
-        if (!window.MarketLensChrome?.listing) throw new Error('Chưa kết nối tiện ích MarketLens. Cài hoặc cập nhật tiện ích (phiên bản 1.5.0 trở lên) rồi tải lại trang.');
+        if (!window.MarketLensChrome?.listing) throw new Error('Chưa kết nối tiện ích MarketLens. Cài hoặc cập nhật tiện ích (phiên bản 1.6.0 trở lên) rồi tải lại trang.');
         await save(postId);
         const fresh = (await api('/api/listings/drafts?' + query())).find(item => item.id === postId);
         await window.MarketLensChrome.listing(fresh, platform);

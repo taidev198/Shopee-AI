@@ -288,3 +288,7 @@ Menu **Sao chép sản phẩm** (site User) lấy sản phẩm của shop khác 
 ### Đăng thêm lên TikTok Shop
 
 Mỗi bản nháp có thêm nút **Đăng TikTok Shop (tiện ích)** và file Mass Upload riêng cho TikTok (`?platform=tiktok`, cân nặng đổi sang kg). Tiện ích ≥ 1.5.0 mở `seller-vn.tiktok.com/product/create` và dùng cùng bộ tự điền như Shopee (khung MarketLens hiện ở góc phải; không tự bấm Đăng). Đường dẫn và nhãn ô của TikTok Seller Center chưa được kiểm chứng trên tài khoản thật; nếu thiếu ô, dùng nút **Sao chép chẩn đoán** để gửi cấu trúc form.
+
+### Quét shop để sao chép (cập nhật)
+- Quét thêm **ảnh trong mô tả** (hiện trong thẻ bản nháp, bấm `+` để thêm vào ảnh sản phẩm, tối đa 9), thương hiệu (từ thuộc tính `Brand` nếu Shopee có hiển thị) và ngành hàng dự phòng từ breadcrumb. Cột "Dữ liệu" ở bước 2 cho biết mỗi sản phẩm đã có gì / còn thiếu gì.
+- Quét lại shop ghi đè chi tiết cũ của từng sản phẩm; mỗi lần đọc tối đa 1000 sản phẩm. Nút **Xóa sản phẩm đã chọn** (bước 2) xóa dữ liệu quét để lấy lại bản mới (bản nháp được giữ). Bản nháp xóa từng cái hoặc hàng loạt ở bước 3. Tiện ích 1.6.0.

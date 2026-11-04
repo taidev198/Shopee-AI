@@ -422,6 +422,8 @@ def user_permission(path, method):
         return 'job' if method == 'POST' else None
     if path in ('/api/listings/sources', '/api/listings/drafts', '/api/listings/export'):
         return 'shop' if method == 'GET' or (path == '/api/listings/drafts' and method == 'POST') else None
+    if path == '/api/listings/sources/delete':
+        return 'shop' if method == 'POST' else None
     if path == '/api/listings/drafts/bulk':
         return 'shop' if method == 'POST' else None
     if re.fullmatch(r'/api/listings/drafts/[^/]+', path):
@@ -448,6 +450,7 @@ AUDIT_LABELS = (
     ('DELETE', r'/api/auth/accounts/[^/]+', 'Khóa User'),
     ('POST', r'/api/shops', 'Thêm shop'),
     ('POST', r'/api/listings/drafts', 'Sao chép sản phẩm thành bản nháp đăng bán'),
+    ('POST', r'/api/listings/sources/delete', 'Xóa sản phẩm đã quét khỏi danh sách sao chép'),
     ('POST', r'/api/listings/drafts/bulk', 'Sửa/xóa hàng loạt bản nháp đăng bán'),
     ('PUT', r'/api/listings/drafts/[^/]+', 'Sửa bản nháp đăng bán'),
     ('DELETE', r'/api/listings/drafts/[^/]+', 'Xóa bản nháp đăng bán'),
