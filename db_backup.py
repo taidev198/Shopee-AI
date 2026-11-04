@@ -1,7 +1,7 @@
 """Keep the SQLite database across container restarts by mirroring it to remote storage.
 
 Two stores are supported, chosen by environment variables (Neon wins when both are set):
-  * Neon Postgres: BACKUP_NEON_URL (the connection string from the Neon dashboard)
+  * Neon Postgres: DATABASE_URL (or BACKUP_NEON_URL), the connection string from the Neon dashboard
   * Cloudflare D1: BACKUP_D1_ACCOUNT_ID, BACKUP_D1_DATABASE_ID, BACKUP_D1_API_TOKEN
 Without them the app behaves as before. Restore runs before the schema is created,
 so a fresh container starts from the last upload instead of an empty file.
@@ -155,9 +155,10 @@ class D1Store:
 
 def configured_store():
     """Return the store selected by environment variables, or None."""
-    neon = ''.join(os.environ.get('BACKUP_NEON_URL', '').split())
-    if neon:
-        return NeonStore(neon)
+    for name in ('DATABASE_URL', 'BACKUP_NEON_URL'):
+        neon = ''.join(os.environ.get(name, '').split())
+        if neon.startswith(('postgres://', 'postgresql://')):
+            return NeonStore(neon)
     account, database, token = _clean('BACKUP_D1_ACCOUNT_ID'), _clean('BACKUP_D1_DATABASE_ID'), _clean('BACKUP_D1_API_TOKEN')
     if account and database and token:
         return D1Store(account, database, token)
@@ -275,7 +276,7 @@ def selftest():
     """Round-trip a tiny database through the configured store: python db_backup.py --selftest"""
     store = configured_store()
     if store is None:
-        print('Chưa đặt biến BACKUP_NEON_URL (Neon) hoặc BACKUP_D1_* (D1).')
+        print('Chưa đặt biến DATABASE_URL (Neon) hoặc BACKUP_D1_* (D1).')
         return 1
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder, 'probe.db')

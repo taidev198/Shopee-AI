@@ -122,7 +122,7 @@ def test_connection_error_is_reported_not_treated_as_empty(tmp_path):
 
 
 def test_not_configured_is_a_noop(tmp_path, monkeypatch):
-    for name in ('BACKUP_NEON_URL', 'BACKUP_D1_ACCOUNT_ID', 'BACKUP_D1_DATABASE_ID', 'BACKUP_D1_API_TOKEN'):
+    for name in ('DATABASE_URL', 'BACKUP_NEON_URL', 'BACKUP_D1_ACCOUNT_ID', 'BACKUP_D1_DATABASE_ID', 'BACKUP_D1_API_TOKEN'):
         monkeypatch.delenv(name, raising=False)
     assert db_backup.restore_if_missing(tmp_path / 'market.db') == 'disabled'
     assert db_backup.backup_now(tmp_path / 'market.db') is False
@@ -147,10 +147,20 @@ def test_neon_store_is_selected_from_environment_and_wins_over_d1(monkeypatch):
     monkeypatch.setenv('BACKUP_D1_ACCOUNT_ID', 'acct')
     monkeypatch.setenv('BACKUP_D1_DATABASE_ID', 'db')
     monkeypatch.setenv('BACKUP_D1_API_TOKEN', 'token')
-    monkeypatch.setenv('BACKUP_NEON_URL', ' postgresql://user:pw@host/db?sslmode=require\n')
+    monkeypatch.delenv('BACKUP_NEON_URL', raising=False)
+    monkeypatch.setenv('DATABASE_URL', ' postgresql://user:pw@host/db?sslmode=require\n')
     store = db_backup.configured_store()
     assert store.name == 'neon' and store.dsn == 'postgresql://user:pw@host/db?sslmode=require'
     assert store.interval >= 300
+
+
+def test_database_url_that_is_not_postgres_is_ignored_and_the_old_name_still_works(monkeypatch):
+    for name in ('BACKUP_D1_ACCOUNT_ID', 'BACKUP_D1_DATABASE_ID', 'BACKUP_D1_API_TOKEN', 'BACKUP_NEON_URL'):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv('DATABASE_URL', 'sqlite:///other.db')
+    assert db_backup.configured_store() is None
+    monkeypatch.setenv('BACKUP_NEON_URL', 'postgres://user:pw@host/db')
+    assert db_backup.configured_store().name == 'neon'
 
 
 class FakeD1:

@@ -7,7 +7,7 @@ services:
     envVars:
       - key: MARKET_DB
         value: /data/market.db
-      - key: BACKUP_NEON_URL
+      - key: DATABASE_URL
         sync: false
       - key: BACKUP_D1_ACCOUNT_ID
         sync: false
