@@ -34,3 +34,4 @@
 
 .cmd-block{margin:6px 0 12px;padding:10px 12px;border-radius:10px;background:#1e1530;color:#f4efff;overflow-x:auto;font-size:12px;user-select:all}
 .cmd-block code{background:none;color:inherit;white-space:pre}
+.competitor-name-search{margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #e6eafc}.competitor-name-row{display:flex;gap:10px;margin-top:9px}.competitor-name-row input{flex:1;min-width:0;padding:11px 13px;border:1px solid #d9e0f1;border-radius:9px;font:inherit;font-size:13px}.competitor-name-row .btn{white-space:nowrap}@media(max-width:620px){.competitor-name-row{flex-direction:column}}
