@@ -184,13 +184,33 @@
     if (!box) return report.missing.push('ngành hàng (không thấy ô chọn)');
     box.scrollIntoView({block: 'center'});
     box.click(); box.focus();
-    await pause(600);
-    const search = [...document.querySelectorAll('input')].find(el => visible(el) && !el.readOnly && /tim|search|nhap|nganh/.test(fold(el.placeholder || ''))) || (box.matches('input') && !box.readOnly ? box : null);
-    if (search) { setValue(search, leaf); await pause(900); }
-    const wanted = fold(leaf);
-    const options = [...document.querySelectorAll('[role=option], [class*="option"], [class*="item"], li')].filter(el => visible(el) && el.children.length <= 4 && !panelOwns(el));
-    const match = options.find(el => fold(el.innerText).replace(/\s+/g, ' ').trim().endsWith(wanted)) || options.find(el => fold(el.innerText).includes(wanted));
-    if (match) { match.click(); await pause(500); report.filled.push('ngành hàng'); } else report.missing.push(`ngành hàng "${leaf}" (chọn trong danh sách)`);
+    await pause(800);
+    const candidates = () => [...document.querySelectorAll('[role=option], [role=menuitem], [class*="option"], [class*="item"], [class*="cascader"] li, li')]
+      .filter(el => visible(el) && el.children.length <= 4 && !panelOwns(el) && !el.contains(box));
+    const textOf = el => fold(el.innerText).replace(/\s+/g, ' ').trim();
+    // Click through the levels of the path (Ngành cấp 1 > cấp 2 > …), like a person would.
+    let clicked = 0;
+    for (const part of path) {
+      const wanted = fold(part);
+      const match = candidates().find(el => textOf(el) === wanted) || candidates().find(el => textOf(el).startsWith(wanted));
+      if (!match) break;
+      match.scrollIntoView({block: 'nearest'});
+      match.click(); clicked++;
+      await pause(700);
+    }
+    if (clicked < path.length) {
+      // Fallback: type the last segment in the picker's search box and click the best match.
+      const search = [...document.querySelectorAll('input')].find(el => visible(el) && !el.readOnly && /tim|search|nhap|nganh/.test(fold(el.placeholder || ''))) || (box.matches('input') && !box.readOnly ? box : null);
+      if (search) { setValue(search, leaf); await pause(1000); }
+      const wanted = fold(leaf);
+      const match = candidates().find(el => textOf(el).endsWith(wanted)) || candidates().find(el => textOf(el).includes(wanted));
+      if (!match) return report.missing.push(`ngành hàng "${leaf}" (chọn trong danh sách)`);
+      match.click(); await pause(700);
+    }
+    const confirm = [...document.querySelectorAll('button')].find(el => visible(el) && !panelOwns(el) && /^(xac nhan|chon|ok|confirm|hoan tat)$/.test(textOf(el)));
+    if (confirm) { confirm.click(); await pause(700); }
+    report.filled.push('ngành hàng');
+    await pause(1200);  // the rest of the form (variants, price, weight) appears after the category is set
   }
   const panelOwns = el => !!el.closest('[data-marketlens-panel]');
   async function attachImages(draft, report) {
@@ -242,6 +262,7 @@
       if (list.length >= 3) break;
       await pause(500);
     }
+    if (draft.category) { await chooseCategory(draft, report); list = controls(); }
     await scrollThrough();
     await revealSections();
     list = controls();
@@ -252,14 +273,16 @@
       ['price', 'giá', draft.price || '', ['input']], ['stock', 'kho hàng', draft.stock || '', ['input']],
       ['weight', 'cân nặng', platform === 'tiktok' ? (draft.weight_g ? draft.weight_g / 1000 : '') : draft.weight_g || '', ['input']]]) {
       if (value === '' || value === 0) { if (key !== 'name' && key !== 'description') report.notes.push(`${label}: bản nháp để trống/0 nên không điền (sửa ở trang bản nháp).`); continue; }
-      const element = pick(list, key, kinds, used) || guess(list, key, used) || guessNumeric(list, key, used) || (LABEL_PATTERNS[key] ? inputAfterLabel(LABEL_PATTERNS[key], used) : null);
+      if (key === 'weight' || key === 'price') list = controls();
+      const find = () => pick(list, key, kinds, used) || guess(list, key, used) || guessNumeric(list, key, used) || (LABEL_PATTERNS[key] ? inputAfterLabel(LABEL_PATTERNS[key], used) : null);
+      let element = find();
+      if (!element && key === 'weight') { await scrollThrough(); await pause(1500); list = controls(); element = find(); }  // weight appears only after price is set
       if (element) { used.add(element); setValue(element, value); report.filled.push(label); await pause(150); } else report.missing.push(label);
     }
     for (const [label, pattern, nameMatch] of ATTRIBUTE_FIELDS) {
       const attribute = draft.attributes.find(item => nameMatch.test(fold(item.name).trim()));
       if (attribute?.value && !(await chooseOption(pattern, attribute.value, report, label))) report.missing.push(`${label} (chọn trong danh sách)`);
     }
-    if (draft.category) await chooseCategory(draft, report);
     if (draft.variants.length) report.notes.push('Phân loại hàng: tự thêm theo bảng bên dưới (Shopee kiểm tra chặt phần này).');
     if (draft.images.length) await attachImages(draft, report);
     if (draft.video) await attachVideo(draft, report);
