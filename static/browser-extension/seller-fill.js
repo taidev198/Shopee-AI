@@ -7,8 +7,8 @@
   const PATTERNS = {
     name: [/ten san pham/, /product name/],
     description: [/mo ta san pham/, /product description/, /mo ta/],
-    price: [/gia ban/, /^\s*gia\b/, /\bgia\b.*(vnd|₫|d\b)/, /\bprice\b/],
-    stock: [/kho hang/, /\bstock\b/, /so luong/],
+    price: [/gia ban le/, /gia ban/, /^\s*gia\b/, /\bgia\b.*(vnd|₫|d\b)/, /\bprice\b/],
+    stock: [/hang co san/, /hang ton/, /kho hang/, /\bstock\b/, /so luong/],
     weight: [/can nang/, /trong luong/, /weight/],
   };
   const visible = element => !!(element && element.getClientRects().length);
@@ -113,7 +113,7 @@
     }
     return null;
   }
-  const LABEL_PATTERNS = {price: /^gia( ban)?(\b.*d)?$/, stock: /^kho hang\b/, weight: /^(can nang|trong luong)\b/};
+  const LABEL_PATTERNS = {price: /^gia( ban( le)?)?(\b.*d)?$/, stock: /^(kho hang|hang co san|hang ton)\b/, weight: /^(can nang|trong luong)\b/};
   // Heuristics for inputs whose label sits in a neighbouring element (price has a "đ" prefix, weight a "gr" suffix).
   function nearText(element) {
     let node = element.parentElement;
