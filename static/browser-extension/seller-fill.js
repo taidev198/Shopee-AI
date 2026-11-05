@@ -312,39 +312,7 @@
     }
     if (done) report.filled.push('kích thước kiện hàng');
   }
-  // Shopee's "Thêm 1 sản phẩm mới" has two steps: (1) images + title, then "Tiếp theo", (2) the full form.
-  const stored = key => { try { return sessionStorage.getItem(`marketlens-${key}`) === '1'; } catch (error) { return false; } };
-  const remember = key => { try { sessionStorage.setItem(`marketlens-${key}`, '1'); } catch (error) { /* ignore */ } };
-  const imagesDone = () => stored('images');
-  const nextButton = () => [...document.querySelectorAll('button')].find(el => visible(el) && !panelOwns(el) && fold(el.innerText).trim() === 'tiep theo');
-  const hasFullForm = () => [...document.querySelectorAll('div, span, li, a')].some(el => visible(el) && !panelOwns(el) && el.children.length === 0 && /^(thong tin ban hang|van chuyen)$/.test(fold(el.innerText).trim()));
-  const isStepOne = () => !hasFullForm() && !!nextButton();
-  async function waitFor(test, ms) {
-    for (let waited = 0; waited < ms; waited += 400) { if (test()) return true; await pause(400); }
-    return !!test();
-  }
-  async function stepOne(draft, panel) {
-    const result = panel.querySelector('[data-result]');
-    const report = {filled: [], missing: [], notes: []};
-    result.textContent = 'Bước 1: đang đăng ảnh và nhập tên…';
-    await waitFor(() => document.querySelector('input[type=file]'), 8000);
-    if (draft.images.length && !imagesDone()) { await attachImages(draft, report); remember('images'); await pause(2500); }
-    const name = controls().find(item => item.kind !== 'rich' && /ten san pham|product name/.test(fold(item.text)) || (item.kind === 'input' && item.element.maxLength === 120));
-    if (name) setValue(name.element, String(draft.name || '').trim().slice(0, 120));
-    await pause(800);
-    if (await waitFor(() => { const button = nextButton(); return button && !button.disabled && !button.className.includes('disabled'); }, 15000)) {
-      nextButton().click();
-      result.textContent = 'Bước 1 xong, đang chờ biểu mẫu chi tiết…';
-      await waitFor(hasFullForm, 25000);
-      await pause(1500);
-    } else result.textContent = 'Bước 1: nút "Tiếp theo" chưa bật — kiểm tra ảnh/tên rồi bấm Tự điền lại.';
-  }
-  async function run(draft, panel, platform) {
-    if (platform === 'shopee' && isStepOne()) await stepOne(draft, panel);
-    await fill(draft, panel, platform);
-    remember(autoKey(draft));
-  }
-  const autoKey = draft => `auto-${draft.id || draft.name}`;
+  const run = (draft, panel, platform) => fill(draft, panel, platform);
   async function fill(draft, panel, platform) {
     const report = {filled: [], missing: [], notes: []};
     const result = panel.querySelector('[data-result]');
@@ -378,7 +346,7 @@
     }
     if (draft.variants.length) report.notes.push('Phân loại hàng: tự thêm theo bảng bên dưới (Shopee kiểm tra chặt phần này).');
     if (platform === 'tiktok') fillPackageSize(draft, report);
-    if (draft.images.length && !imagesDone()) await attachImages(draft, report);
+    if (draft.images.length) await attachImages(draft, report);
     if (draft.video) await attachVideo(draft, report);
     result.textContent =
       `Đã điền: ${report.filled.join(', ') || 'không có'}.` + (report.missing.length ? ` Chưa tìm thấy ô: ${report.missing.join(', ')} — hãy dán bằng nút Sao chép.` : '') +
@@ -420,9 +388,7 @@
   const here = location.hostname === 'seller-vn.tiktok.com' ? 'tiktok' : 'shopee';
   chrome.runtime.sendMessage({source: 'marketlens-seller', action: 'draft'}).then(reply => {
     if (reply?.ok && reply.draft && (reply.draft.target || 'shopee') === here) {
-      const panel = mount(reply.draft, here);
-      // Start by itself once per browser tab and draft (the seller can still press the button to run it again).
-      if (!stored(autoKey(reply.draft))) { setTimeout(() => panel.querySelector('[data-fill]')?.click(), 1500); }
+      mount(reply.draft, here);  // the seller presses "Tự điền biểu mẫu" themselves
     }
   }).catch(() => {});
 })();
