@@ -43,7 +43,10 @@
   // the largest multi-line control is the description.
   function guess(list, key, used) {
     const free = list.filter(item => !used.has(item.element));
-    if (key === 'name') return free.find(item => item.kind === 'input' && (item.element.maxLength > 60 || /ten|name/.test(fold(item.text))))?.element || null;
+    if (key === 'name') {
+      return free.find(item => item.kind === 'input' && (item.element.maxLength > 60 || /ten|name/.test(fold(item.text))))?.element ||
+        free.find(item => item.kind !== 'rich' && !item.element.readOnly && !item.element.value && item.element.getBoundingClientRect().width > 300)?.element || null;
+    }
     if (key === 'description') {
       const area = free.filter(item => item.kind !== 'input').sort((a, b) => b.element.getBoundingClientRect().height - a.element.getBoundingClientRect().height)[0];
       return area?.element || null;
@@ -110,7 +113,7 @@
     }
     return null;
   }
-  const LABEL_PATTERNS = {price: /^gia( ban)?(\b.*d)?$/, stock: /^kho hang\b/, weight: /^can nang\b/};
+  const LABEL_PATTERNS = {price: /^gia( ban)?(\b.*d)?$/, stock: /^kho hang\b/, weight: /^(can nang|trong luong)\b/};
   // Heuristics for inputs whose label sits in a neighbouring element (price has a "đ" prefix, weight a "gr" suffix).
   function nearText(element) {
     let node = element.parentElement;
@@ -167,6 +170,29 @@
     ['thương hiệu', /^\W*thuong hieu/, /^(brand|thuong hieu)$/],
     ['xuất xứ', /^\W*xuat xu/, /^(country of origin|xuat xu)$/],
   ];
+  // Category: open the "Ngành hàng" picker, search the deepest segment of the copied path and click the best match.
+  async function chooseCategory(draft, report) {
+    const path = String(draft.category || '').split(/\s*[>/›»]\s*/).map(part => part.trim()).filter(Boolean);
+    if (!path.length) return;
+    const leaf = path[path.length - 1];
+    const labelEl = [...document.querySelectorAll('div, span, label, p')].filter(el => visible(el) && el.children.length <= 2)
+      .find(el => /^\W*(nganh hang|danh muc|category)\W*$/.test(fold(el.innerText).replace(/\s+/g, ' ').trim()));
+    let box = null;
+    for (let node = labelEl, depth = 0; node && depth < 5 && !box; node = node.parentElement, depth++) {
+      box = node.querySelector('input:not([type=file]), [class*="select"], [class*="cascader"], [class*="category"]');
+    }
+    if (!box) return report.missing.push('ngành hàng (không thấy ô chọn)');
+    box.scrollIntoView({block: 'center'});
+    box.click(); box.focus();
+    await pause(600);
+    const search = [...document.querySelectorAll('input')].find(el => visible(el) && !el.readOnly && /tim|search|nhap|nganh/.test(fold(el.placeholder || ''))) || (box.matches('input') && !box.readOnly ? box : null);
+    if (search) { setValue(search, leaf); await pause(900); }
+    const wanted = fold(leaf);
+    const options = [...document.querySelectorAll('[role=option], [class*="option"], [class*="item"], li')].filter(el => visible(el) && el.children.length <= 4 && !panelOwns(el));
+    const match = options.find(el => fold(el.innerText).replace(/\s+/g, ' ').trim().endsWith(wanted)) || options.find(el => fold(el.innerText).includes(wanted));
+    if (match) { match.click(); await pause(500); report.filled.push('ngành hàng'); } else report.missing.push(`ngành hàng "${leaf}" (chọn trong danh sách)`);
+  }
+  const panelOwns = el => !!el.closest('[data-marketlens-panel]');
   async function attachImages(draft, report) {
     const input = [...document.querySelectorAll('input[type=file]')].find(item => /image|png|jpe?g/i.test(item.accept || '')) ||
       document.querySelector('input[type=file]');
@@ -185,7 +211,9 @@
   }
   // The video comes from the background in 3MB chunks and is put into the "Thêm video" file input.
   async function attachVideo(draft, report) {
-    const input = [...document.querySelectorAll('input[type=file]')].find(item => /video|mp4/i.test(item.accept || ''));
+    const files = [...document.querySelectorAll('input[type=file]')];
+    const input = files.find(item => /video|mp4|mov/i.test(item.accept || '')) ||
+      (files.length > 1 ? files.find(item => !/image|png|jpe?g/i.test(item.accept || '') && !item.multiple) || files[files.length - 1] : null);
     if (!input) return report.missing.push('video (không thấy ô tải video)');
     const parts = [];
     let total = Infinity, offset = 0, type = 'video/mp4';
@@ -231,20 +259,24 @@
       const attribute = draft.attributes.find(item => nameMatch.test(fold(item.name).trim()));
       if (attribute?.value && !(await chooseOption(pattern, attribute.value, report, label))) report.missing.push(`${label} (chọn trong danh sách)`);
     }
+    if (draft.category) await chooseCategory(draft, report);
     if (draft.variants.length) report.notes.push('Phân loại hàng: tự thêm theo bảng bên dưới (Shopee kiểm tra chặt phần này).');
     if (draft.images.length) await attachImages(draft, report);
-    if (draft.video && platform === 'shopee') await attachVideo(draft, report);
+    if (draft.video) await attachVideo(draft, report);
     result.textContent =
       `Đã điền: ${report.filled.join(', ') || 'không có'}.` + (report.missing.length ? ` Chưa tìm thấy ô: ${report.missing.join(', ')} — hãy dán bằng nút Sao chép.` : '') +
       (report.notes.length ? ' ' + report.notes.join(' ') : '') + ' Kiểm tra ngành hàng, thuộc tính rồi tự bấm Đăng.';
     const labelsSeen = [...document.querySelectorAll('div, span, label, h3, h4')].filter(el => visible(el) && el.children.length === 0 && /^(\*\s*)?(gia|kho hang|can nang|thuong hieu)\b/.test(fold(el.innerText).trim())).slice(0, 12).map(el => el.innerText.trim());
     panel.dataset.diagnostics = JSON.stringify({url: location.pathname, found: list.length, labelsSeen,
-      controls: list.slice(0, 40).map(item => ({kind: item.kind, text: item.text.slice(0, 100), type: item.element.type || '', max: item.element.maxLength > 0 ? item.element.maxLength : 0}))}, null, 1);
+      iframes: document.querySelectorAll('iframe').length, files: [...document.querySelectorAll('input[type=file]')].map(item => ({accept: item.accept || '', multiple: item.multiple})),
+      categoryLabels: [...document.querySelectorAll('div, span, label')].filter(el => visible(el) && el.children.length === 0 && /^(nganh hang|danh muc|ten san pham|can nang|trong luong|video)/.test(fold(el.innerText).trim())).slice(0, 12).map(el => el.innerText.trim()),
+      controls: list.slice(0, 40).map(item => ({kind: item.kind, text: item.text.slice(0, 100), type: item.element.type || '', placeholder: item.element.getAttribute('placeholder') || '', max: item.element.maxLength > 0 ? item.element.maxLength : 0}))}, null, 1);
     panel.querySelector('[data-diag]').hidden = false;
   }
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]));
   function mount(draft, platform) {
     const panel = document.createElement('div');
+    panel.dataset.marketlensPanel = '1';
     panel.setAttribute('style', 'position:fixed;right:16px;bottom:16px;z-index:2147483647;width:340px;max-height:80vh;overflow:auto;background:#fff;color:#222;border:2px solid #ee4d2d;border-radius:10px;padding:12px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.25)');
     const rows = [['Tên', draft.name], ['Giá', draft.price || ''], ['Kho hàng', draft.stock || ''], ['Ngành hàng', draft.category], ['Mô tả', draft.description]]
       .filter(([, value]) => value !== '' && value !== undefined);
