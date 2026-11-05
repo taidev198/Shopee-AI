@@ -230,21 +230,41 @@
     await pause(1200);  // the rest of the form (variants, price, weight) appears after the category is set
   }
   const panelOwns = el => !!el.closest('[data-marketlens-panel]');
+  // Re-encode as a real JPEG: the CDN often serves WebP under a .jpg name, which the seller sites accept but never finish processing.
+  async function toJpeg(blob) {
+    try {
+      const bitmap = await createImageBitmap(blob);
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width; canvas.height = bitmap.height;
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(bitmap, 0, 0);
+      return await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    } catch (error) { return null; }
+  }
+  const uploading = () => [...document.querySelectorAll('[class*="loading"], [class*="spin"], [class*="progress"]')].filter(el => visible(el) && !panelOwns(el)).length;
+  // Upload one image at a time and wait for its spinner to finish, so the site's uploader is never flooded.
   async function attachImages(draft, report) {
     const input = [...document.querySelectorAll('input[type=file]')].find(item => /image|png|jpe?g/i.test(item.accept || '')) ||
       document.querySelector('input[type=file]');
     if (!input) return report.missing.push('ảnh sản phẩm (không thấy ô tải ảnh)');
-    const transfer = new DataTransfer();
+    let sent = 0;
     for (let index = 0; index < Math.min(draft.images.length, 9); index++) {
       const reply = await chrome.runtime.sendMessage({source: 'marketlens-seller', action: 'image', index});
       if (!reply?.ok) { report.notes.push(`Ảnh ${index + 1}: ${reply?.error || 'không tải được'}`); continue; }
       const bytes = Uint8Array.from(atob(reply.base64), char => char.charCodeAt(0));
-      transfer.items.add(new File([bytes], `marketlens-${index + 1}.${reply.type.includes('png') ? 'png' : 'jpg'}`, {type: reply.type}));
+      const jpeg = await toJpeg(new Blob([bytes], {type: reply.type}));
+      const file = jpeg ? new File([jpeg], `marketlens-${index + 1}.jpg`, {type: 'image/jpeg'}) : new File([bytes], `marketlens-${index + 1}.${reply.type.includes('png') ? 'png' : 'jpg'}`, {type: reply.type});
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('change', {bubbles: true}));
+      sent++;
+      await pause(1500);
+      for (let waited = 0; waited < 15000 && uploading(); waited += 500) await pause(500);
     }
-    if (!transfer.files.length) return report.missing.push('ảnh sản phẩm');
-    input.files = transfer.files;
-    input.dispatchEvent(new Event('change', {bubbles: true}));
-    report.filled.push(`${transfer.files.length} ảnh`);
+    if (!sent) return report.missing.push('ảnh sản phẩm');
+    report.filled.push(`${sent} ảnh`);
   }
   // The video comes from the background in 3MB chunks and is put into the "Thêm video" file input.
   async function attachVideo(draft, report) {
