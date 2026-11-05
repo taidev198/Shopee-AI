@@ -245,10 +245,13 @@
   const uploading = () => [...document.querySelectorAll('[class*="loading"], [class*="spin"], [class*="progress"]')].filter(el => visible(el) && !panelOwns(el)).length;
   // Upload one image at a time and wait for its spinner to finish, so the site's uploader is never flooded.
   async function attachImages(draft, report) {
-    const input = [...document.querySelectorAll('input[type=file]')].find(item => /image|png|jpe?g/i.test(item.accept || '')) ||
-      document.querySelector('input[type=file]');
-    if (!input) return report.missing.push('ảnh sản phẩm (không thấy ô tải ảnh)');
-    let sent = 0;
+    // Shopee has two image inputs: "image/*" (multiple) and ".jpg, .jpeg, .png" (single). Try the explicit one first;
+    // if its spinner never finishes, switch to the other for the remaining images.
+    const inputs = [...document.querySelectorAll('input[type=file]')].filter(item => /image|png|jpe?g/i.test(item.accept || ''))
+      .sort((a, b) => Number(/image\/\*/.test(a.accept)) - Number(/image\/\*/.test(b.accept)));
+    if (!inputs.length && document.querySelector('input[type=file]')) inputs.push(document.querySelector('input[type=file]'));
+    if (!inputs.length) return report.missing.push('ảnh sản phẩm (không thấy ô tải ảnh)');
+    let current = 0, sent = 0;
     for (let index = 0; index < Math.min(draft.images.length, 9); index++) {
       const reply = await chrome.runtime.sendMessage({source: 'marketlens-seller', action: 'image', index});
       if (!reply?.ok) { report.notes.push(`Ảnh ${index + 1}: ${reply?.error || 'không tải được'}`); continue; }
@@ -257,11 +260,13 @@
       const file = jpeg ? new File([jpeg], `marketlens-${index + 1}.jpg`, {type: 'image/jpeg'}) : new File([bytes], `marketlens-${index + 1}.${reply.type.includes('png') ? 'png' : 'jpg'}`, {type: reply.type});
       const transfer = new DataTransfer();
       transfer.items.add(file);
+      const input = inputs[current];
       input.files = transfer.files;
       input.dispatchEvent(new Event('change', {bubbles: true}));
       sent++;
       await pause(1500);
       for (let waited = 0; waited < 15000 && uploading(); waited += 500) await pause(500);
+      if (uploading() && current + 1 < inputs.length) { current++; report.notes.push('Ô tải ảnh thứ nhất không xong, đã thử ô còn lại.'); }
     }
     if (!sent) return report.missing.push('ảnh sản phẩm');
     report.filled.push(`${sent} ảnh`);
@@ -379,7 +384,7 @@
       `Đã điền: ${report.filled.join(', ') || 'không có'}.` + (report.missing.length ? ` Chưa tìm thấy ô: ${report.missing.join(', ')} — hãy dán bằng nút Sao chép.` : '') +
       (report.notes.length ? ' ' + report.notes.join(' ') : '') + ' Kiểm tra ngành hàng, thuộc tính rồi tự bấm Đăng.';
     const labelsSeen = [...document.querySelectorAll('div, span, label, h3, h4')].filter(el => visible(el) && el.children.length === 0 && /^(\*\s*)?(gia|kho hang|can nang|thuong hieu)\b/.test(fold(el.innerText).trim())).slice(0, 12).map(el => el.innerText.trim());
-    panel.dataset.diagnostics = JSON.stringify({url: location.pathname, found: list.length, labelsSeen,
+    panel.dataset.diagnostics = JSON.stringify({url: location.pathname, result: result.textContent.slice(0, 600), spinners: uploading(), found: list.length, labelsSeen,
       iframes: document.querySelectorAll('iframe').length, files: [...document.querySelectorAll('input[type=file]')].map(item => ({accept: item.accept || '', multiple: item.multiple})),
       categoryLabels: [...document.querySelectorAll('div, span, label')].filter(el => visible(el) && el.children.length === 0 && /^(nganh hang|danh muc|ten san pham|can nang|trong luong|video)/.test(fold(el.innerText).trim())).slice(0, 12).map(el => el.innerText.trim()),
       controls: list.slice(0, 40).map(item => ({kind: item.kind, text: item.text.slice(0, 100), type: item.element.type || '', placeholder: item.element.getAttribute('placeholder') || '', max: item.element.maxLength > 0 ? item.element.maxLength : 0}))}, null, 1);
