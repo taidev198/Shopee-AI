@@ -168,15 +168,32 @@
   }
   const ATTRIBUTE_FIELDS = [
     ['thương hiệu', /^\W*thuong hieu/, /^(brand|thuong hieu)$/],
-    ['xuất xứ', /^\W*xuat xu/, /^(country of origin|xuat xu)$/],
+    ['xuất xứ', /^\W*(quoc gia )?xuat xu/, /^(country of origin|xuat xu)$/],
   ];
   // Category: open the "Ngành hàng" picker, search the deepest segment of the copied path and click the best match.
+  // TikTok lists "Đề xuất" categories under the name once it is typed; each row has an "Áp dụng" button.
+  async function applySuggestedCategory(draft, report) {
+    let buttons = [];
+    for (let attempt = 0; attempt < (location.hostname === 'seller-vn.tiktok.com' ? 14 : 1) && !buttons.length; attempt++) {
+      buttons = [...document.querySelectorAll('button, span, div, a')].filter(el => visible(el) && !panelOwns(el) && el.children.length === 0 && fold(el.innerText).trim() === 'ap dung');
+      if (!buttons.length) await pause(500);
+    }
+    if (!buttons.length) return false;
+    const leaf = fold(String(draft.category || '').split(/\s*[>/›»]\s*/).pop());
+    const rowText = button => { let node = button.parentElement; for (let d = 0; node && d < 4; d++, node = node.parentElement) { if (node.querySelectorAll('button, [class*=btn]').length <= 2 && node.innerText.length > 15) return fold(node.innerText); } return ''; };
+    const best = (leaf && buttons.find(button => rowText(button).includes(leaf))) || buttons[0];
+    best.click();
+    await pause(1500);
+    report.filled.push('hạng mục (đề xuất đầu tiên)');
+    return true;
+  }
   async function chooseCategory(draft, report) {
+    if (await applySuggestedCategory(draft, report)) return;
     const path = String(draft.category || '').split(/\s*[>/›»]\s*/).map(part => part.trim()).filter(Boolean);
     if (!path.length) return;
     const leaf = path[path.length - 1];
     const labelEl = [...document.querySelectorAll('div, span, label, p')].filter(el => visible(el) && el.children.length <= 2)
-      .find(el => /^\W*(nganh hang|danh muc|category)\W*$/.test(fold(el.innerText).replace(/\s+/g, ' ').trim()));
+      .find(el => /^\W*(nganh hang|hang muc|danh muc|category)\W*$/.test(fold(el.innerText).replace(/\s+/g, ' ').trim()));
     let box = null;
     for (let node = labelEl, depth = 0; node && depth < 5 && !box; node = node.parentElement, depth++) {
       box = node.querySelector('input:not([type=file]), [class*="select"], [class*="cascader"], [class*="category"]');
@@ -252,6 +269,24 @@
     report.filled.push('video');
     report.notes.push('Video cần vài phút để Shopee xử lý trước khi hiển thị.');
   }
+  const clean = (text, platform) => platform === 'tiktok' ? String(text || '').replace(/\bshopee\b/gi, '').replace(/[ \t]{2,}/g, ' ') : text;
+  // "Dimension (L x W x H): 50*30*38cm" → package size for TikTok's Chiều dài / rộng / cao.
+  function packageSize(draft) {
+    const attribute = draft.attributes.find(item => /dimension|kich thuoc/.test(fold(item.name)));
+    const numbers = String(attribute?.value || '').match(/\d+(?:[.,]\d+)?/g);
+    return numbers && numbers.length >= 3 ? {length: numbers[0], width: numbers[1], height: numbers[2]} : null;
+  }
+  function fillPackageSize(draft, report) {
+    const size = packageSize(draft);
+    if (!size) return;
+    const fields = [['length', /chieu dai|length/], ['width', /chieu rong|width/], ['height', /chieu cao|height/]];
+    let done = 0;
+    for (const [key, pattern] of fields) {
+      const item = controls().find(entry => entry.kind === 'input' && !entry.element.value && pattern.test(fold(entry.element.getAttribute('placeholder') || '')));
+      if (item) { setValue(item.element, size[key].replace(',', '.')); done++; }
+    }
+    if (done) report.filled.push('kích thước kiện hàng');
+  }
   async function fill(draft, panel, platform) {
     const report = {filled: [], missing: [], notes: []};
     const result = panel.querySelector('[data-result]');
@@ -262,16 +297,16 @@
       if (list.length >= 3) break;
       await pause(500);
     }
-    if (draft.category) { await chooseCategory(draft, report); list = controls(); }
     await scrollThrough();
     await revealSections();
     list = controls();
     if (!list.some(item => /gia|price/.test(fold(item.text)))) { await scrollThrough(); await pause(600); list = controls(); }
     const used = new Set();
     for (const [key, label, value, kinds] of [
-      ['name', 'tên', draft.name, ['input', 'textarea', 'rich']], ['description', 'mô tả', draft.description, ['textarea', 'rich', 'input']],
+      ['name', 'tên', clean(draft.name, platform), ['input', 'textarea', 'rich']], ['description', 'mô tả', clean(draft.description, platform), ['textarea', 'rich', 'input']],
       ['price', 'giá', draft.price || '', ['input']], ['stock', 'kho hàng', draft.stock || '', ['input']],
-      ['weight', 'cân nặng', platform === 'tiktok' ? (draft.weight_g ? draft.weight_g / 1000 : '') : draft.weight_g || '', ['input']]]) {
+      ['weight', 'cân nặng', draft.weight_g || '', ['input']]]) {
+      if (key === 'description' && draft.category) { await chooseCategory(draft, report); list = controls(); }
       if (value === '' || value === 0) { if (key !== 'name' && key !== 'description') report.notes.push(`${label}: bản nháp để trống/0 nên không điền (sửa ở trang bản nháp).`); continue; }
       if (key === 'weight' || key === 'price') list = controls();
       const find = () => pick(list, key, kinds, used) || guess(list, key, used) || guessNumeric(list, key, used) || (LABEL_PATTERNS[key] ? inputAfterLabel(LABEL_PATTERNS[key], used) : null);
@@ -284,6 +319,7 @@
       if (attribute?.value && !(await chooseOption(pattern, attribute.value, report, label))) report.missing.push(`${label} (chọn trong danh sách)`);
     }
     if (draft.variants.length) report.notes.push('Phân loại hàng: tự thêm theo bảng bên dưới (Shopee kiểm tra chặt phần này).');
+    if (platform === 'tiktok') fillPackageSize(draft, report);
     if (draft.images.length) await attachImages(draft, report);
     if (draft.video) await attachVideo(draft, report);
     result.textContent =
