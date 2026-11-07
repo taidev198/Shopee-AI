@@ -1,3 +1,4 @@
+
 """Analytics over saved public snapshots; no network access or generated data.
 
 Sales rankings use public cumulative counters, including rounded lower bounds.
