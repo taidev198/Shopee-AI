@@ -72,3 +72,17 @@ def test_home_page_links_to_blog_and_has_seo_tags(tmp_path, monkeypatch):
     for post in blog_posts.POSTS[:3]:
         assert f'href="/blog/{post["slug"]}"' in home.text
     assert 'banhang.shopee.vn/edu/article' in home.text
+
+
+def test_cover_images_are_served_and_referenced(tmp_path, monkeypatch):
+    import blog_posts
+    with make_client(tmp_path, monkeypatch, 'https://shop.example.com') as anonymous:
+        for post in blog_posts.POSTS:
+            image = anonymous.get(f'/blog/cover/{post["slug"]}.svg')
+            assert image.status_code == 200 and image.headers['content-type'].startswith('image/svg+xml')
+            assert image.text.startswith('<svg') and 'viewBox' in image.text
+            page = anonymous.get(f'/blog/{post["slug"]}').text
+            assert f'src="/blog/cover/{post["slug"]}.svg"' in page and 'alt="Minh họa:' in page
+            assert f'content="https://shop.example.com/blog/cover/{post["slug"]}.svg"' in page
+        assert anonymous.get('/blog/cover/none.svg').status_code == 404
+        assert '/blog/cover/' in anonymous.get('/').text

@@ -26,3 +26,4 @@
 .home-blog .read-more{margin-top:auto;font-size:14px;font-weight:700;color:var(--purple);text-decoration:none}
 .home-blog-more{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:24px}
 @media(max-width:900px){.home-blog-grid{grid-template-columns:1fr}}
+.home-blog .post-thumb{display:block;margin:-22px -22px 6px;border-radius:var(--radius) var(--radius) 0 0;overflow:hidden;line-height:0}.home-blog .post-thumb img{width:100%;height:auto;display:block}

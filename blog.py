@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from blog_posts import POSTS, REFERENCE_NOTE, REFERENCE_URL
 
 BY_SLUG = {p['slug']: p for p in POSTS}
-CSS = '/static/blog.css?v=20261107-blog-01'
+CSS = '/static/blog.css?v=20261107-blog-02'
 BRAND = 'MarketLens'
 
 
@@ -22,6 +22,45 @@ def site_url(request=None):
         if value.startswith(('https://', 'http://')):
             return value
     return str(request.base_url).rstrip('/') if request is not None else ''
+
+
+ICONS = {
+    'cach-ban-hang-tren-shopee-cho-nguoi-moi': '<path d="M-60 -10h120l-12 70h-96zM-35 -10v-20a35 35 0 0 1 70 0v20" fill="none" stroke="#fff" stroke-width="9" stroke-linejoin="round"/>',
+    'toi-uu-tieu-de-mo-ta-san-pham-shopee': '<circle cx="-10" cy="-10" r="42" fill="none" stroke="#fff" stroke-width="9"/><path d="M22 22l38 38" stroke="#fff" stroke-width="11" stroke-linecap="round"/><path d="M-30 -10h40M-30 6h24" stroke="#fff" stroke-width="7" stroke-linecap="round"/>',
+    'cach-tinh-gia-ban-va-loi-nhuan-shopee': '<rect x="-60" y="10" width="26" height="50" rx="4" fill="#fff" opacity=".6"/><rect x="-22" y="-20" width="26" height="80" rx="4" fill="#fff" opacity=".8"/><rect x="16" y="-55" width="26" height="115" rx="4" fill="#fff"/><path d="M-62 -30l40-25 38 18 42-28" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/>',
+    'cach-nghien-cuu-doi-thu-tren-shopee': '<rect x="-62" y="-45" width="58" height="90" rx="8" fill="none" stroke="#fff" stroke-width="8"/><rect x="6" y="-45" width="58" height="90" rx="8" fill="#fff" opacity=".85"/><path d="M-50 -15h34M-50 2h34M-50 19h20" stroke="#fff" stroke-width="6" stroke-linecap="round"/>',
+    'cach-chon-san-pham-hot-trend-de-ban-shopee': '<path d="M-62 40l42-48 28 28 58-70" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 -50h46v46" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>',
+    'hinh-anh-video-san-pham-shopee': '<rect x="-64" y="-42" width="128" height="88" rx="12" fill="none" stroke="#fff" stroke-width="8"/><circle cx="-26" cy="-14" r="10" fill="#fff"/><path d="M-64 30l38-34 30 26 20-16 40 34" fill="#fff" opacity=".8"/>',
+}
+PALETTES = [('#7152cf', '#4b34a8'), ('#ee4d2d', '#b8331a'), ('#28876b', '#1a5e4a'), ('#2d6cdf', '#1d4aa3'), ('#c2410c', '#8a2f08'), ('#9333ea', '#6b21a8')]
+
+
+def cover_svg(post):
+    """Original illustration for a post: gradient background, line icon, category and title."""
+    index = next((i for i, p in enumerate(POSTS) if p['slug'] == post['slug']), 0)
+    a, b = PALETTES[index % len(PALETTES)]
+    words, lines, line = post['title'].split(), [], ''
+    for w in words:
+        if len(line) + len(w) > 26 and line:
+            lines.append(line)
+            line = w
+        else:
+            line = (line + ' ' + w).strip()
+    lines.append(line)
+    text = ''.join(f'<tspan x="60" dy="{0 if i == 0 else 40}">{html.escape(t)}</tspan>' for i, t in enumerate(lines[:3]))
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="' + esc(post['title']) + '">'
+        f'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{a}"/><stop offset="1" stop-color="{b}"/></linearGradient></defs>'
+        '<rect width="1200" height="630" fill="url(#g)"/><circle cx="1050" cy="90" r="220" fill="#fff" opacity=".08"/><circle cx="1130" cy="560" r="160" fill="#fff" opacity=".07"/>'
+        f'<g transform="translate(930 315) scale(2.1)">{ICONS.get(post["slug"], "")}</g>'
+        f'<text x="60" y="90" fill="#fff" opacity=".85" font-family="system-ui,Arial,sans-serif" font-size="26" font-weight="700" letter-spacing="3">{html.escape(post["category"].upper())}</text>'
+        f'<text x="60" y="300" fill="#fff" font-family="system-ui,Arial,sans-serif" font-size="46" font-weight="800">{text}</text>'
+        '<text x="60" y="570" fill="#fff" opacity=".9" font-family="system-ui,Arial,sans-serif" font-size="28" font-weight="800">market<tspan fill="#ffd9cf">lens</tspan> · Blog</text></svg>'
+    )
+
+
+def cover_url(post):
+    return f'/blog/cover/{post["slug"]}.svg'
 
 
 def esc(value):
@@ -44,7 +83,9 @@ def toc(body):
 def card(post):
     url = f'/blog/{post["slug"]}'
     return (
-        f'<article class="post-card"><span class="post-cat">{esc(post["category"])}</span>'
+        f'<article class="post-card"><a class="post-thumb" href="{url}" tabindex="-1" aria-hidden="true">'
+        f'<img src="{cover_url(post)}" alt="" width="600" height="315" loading="lazy"></a>'
+        f'<span class="post-cat">{esc(post["category"])}</span>'
         f'<h3><a href="{url}">{esc(post["title"])}</a></h3><p>{esc(post["summary"])}</p>'
         f'<div class="post-meta"><time datetime="{post["published"]}">{vi_date(post["published"])}</time>'
         f' · {post["minutes"]} phút đọc</div><a class="read-more" href="{url}">Đọc bài viết →</a></article>'
@@ -125,6 +166,8 @@ def post_html(post, base):
         f'<span>{esc(post["category"])}</span></nav>'
         f'<article class="article"><header><span class="post-cat">{esc(post["category"])}</span><h1>{esc(post["h1"])}</h1>'
         f'<div class="post-meta">Đăng ngày <time datetime="{post["published"]}">{vi_date(post["published"])}</time> · {post["minutes"]} phút đọc · {esc(BRAND)}</div></header>'
+        f'<figure class="cover"><img src="{cover_url(post)}" alt="Minh họa: {esc(post["title"])}" width="1200" height="630" fetchpriority="high">'
+        f'<figcaption>Hình minh họa do MarketLens thiết kế.</figcaption></figure>'
         f'{toc(post["body"])}<div class="prose">{post["body"]}</div>'
         f'<section class="faq" aria-labelledby="faq-title"><h2 id="faq-title">Câu hỏi thường gặp</h2>{faq_items}</section>'
         f'{REFERENCE_NOTE}'
@@ -137,7 +180,7 @@ def post_html(post, base):
         '@context': 'https://schema.org',
         '@graph': [
             {'@type': 'BlogPosting', 'headline': post['h1'], 'description': post['description'], 'inLanguage': 'vi',
-             'datePublished': post['published'], 'dateModified': post['published'], 'mainEntityOfPage': canonical, 'url': canonical,
+             'datePublished': post['published'], 'dateModified': post['published'], 'mainEntityOfPage': canonical, 'url': canonical, 'image': base + cover_url(post),
              'keywords': post['keywords'], 'articleSection': post['category'],
              'author': {'@type': 'Organization', 'name': operator}, 'publisher': {'@type': 'Organization', 'name': BRAND, 'url': base}},
             {'@type': 'BreadcrumbList', 'itemListElement': [
@@ -148,7 +191,7 @@ def post_html(post, base):
                 {'@type': 'Question', 'name': q, 'acceptedAnswer': {'@type': 'Answer', 'text': a}} for q, a in post['faq']]},
         ],
     })
-    og = f'<meta property="article:published_time" content="{post["published"]}"><meta property="article:section" content="{esc(post["category"])}">'
+    og = f'<meta property="og:image" content="{base}{cover_url(post)}"><meta property="article:published_time" content="{post["published"]}"><meta property="article:section" content="{esc(post["category"])}">'
     return page(f'{post["title"]} | {BRAND}', post['description'], canonical, body, og + graph, 'article', post['keywords'])
 
 
@@ -181,6 +224,13 @@ def install(app):
         if not post:
             raise HTTPException(404, 'Không tìm thấy bài viết')
         return Response(post_html(post, site_url(request)), media_type='text/html; charset=utf-8', headers=cache)
+
+    @router.get('/blog/cover/{slug}.svg')
+    def blog_cover(slug: str):
+        post = BY_SLUG.get(slug)
+        if not post:
+            raise HTTPException(404, 'Không tìm thấy hình')
+        return Response(cover_svg(post), media_type='image/svg+xml', headers={'Cache-Control': 'public, max-age=86400'})
 
     @router.get('/sitemap.xml')
     def sitemap(request: Request):
