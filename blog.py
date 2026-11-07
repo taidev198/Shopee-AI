@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from blog_posts import POSTS, REFERENCE_NOTE, REFERENCE_URL
 
 BY_SLUG = {p['slug']: p for p in POSTS}
-CSS = '/static/blog.css?v=20261107-blog-03'
+CSS = '/static/blog.css?v=20261107-blog-04'
 BRAND = 'MarketLens'
 
 
@@ -55,11 +55,57 @@ def cover_svg(post):
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="' + esc(post['title']) + '">'
         f'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{a}"/><stop offset="1" stop-color="{b}"/></linearGradient></defs>'
         '<rect width="1200" height="630" fill="url(#g)"/><circle cx="1050" cy="90" r="220" fill="#fff" opacity=".08"/><circle cx="1130" cy="560" r="160" fill="#fff" opacity=".07"/>'
-        f'<g transform="translate(930 315) scale(2.1)">{ICONS.get(post["slug"], "")}</g>'
+        f'<g transform="translate(930 315) scale(2.1)">{ICONS.get(post["slug"]) or list(ICONS.values())[index % len(ICONS)]}</g>'
         f'<text x="60" y="90" fill="#fff" opacity=".85" font-family="system-ui,Arial,sans-serif" font-size="26" font-weight="700" letter-spacing="3">{html.escape(post["category"].upper())}</text>'
         f'<text x="60" y="300" fill="#fff" font-family="system-ui,Arial,sans-serif" font-size="46" font-weight="800">{text}</text>'
         '<text x="60" y="570" fill="#fff" opacity=".9" font-family="system-ui,Arial,sans-serif" font-size="28" font-weight="800">market<tspan fill="#ffd9cf">lens</tspan> · Blog</text></svg>'
     )
+
+
+def wrap(text, width):
+    lines, line = [], ''
+    for word in text.split():
+        if line and len(line) + len(word) + 1 > width:
+            lines.append(line)
+            line = word
+        else:
+            line = (line + ' ' + word).strip()
+    if line:
+        lines.append(line)
+    return lines or ['']
+
+
+def steps_svg(post):
+    """Original step-by-step diagram (numbered cards, MarketLens watermark) built from post['steps']."""
+    steps = post.get('steps') or []
+    index = next((i for i, p in enumerate(POSTS) if p['slug'] == post['slug']), 0)
+    a, b = PALETTES[index % len(PALETTES)]
+    rows, y = [], 120
+    for number, (title, desc) in enumerate(steps, 1):
+        desc_lines = wrap(desc, 64)[:2]
+        height = 70 + 26 * len(desc_lines)
+        text = ''.join(f'<text x="170" y="{y + 66 + 26 * i}" fill="#475069" font-size="21">{html.escape(line)}</text>' for i, line in enumerate(desc_lines))
+        rows.append(
+            f'<rect x="40" y="{y}" width="1120" height="{height}" rx="18" fill="#fff" stroke="#e3e6f1"/>'
+            f'<circle cx="100" cy="{y + height // 2}" r="30" fill="{a}"/>'
+            f'<text x="100" y="{y + height // 2 + 11}" text-anchor="middle" fill="#fff" font-size="32" font-weight="800">{number}</text>'
+            f'<text x="170" y="{y + 38}" fill="#1b203b" font-size="26" font-weight="800">{html.escape(title)}</text>{text}'
+        )
+        y += height + 18
+    total = y + 70
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 {total}" role="img" aria-label="Các bước: {esc(post["title"])}" font-family="system-ui,Arial,sans-serif">'
+        f'<rect width="1200" height="{total}" fill="#f5f3fc"/>'
+        f'<rect width="1200" height="84" fill="{a}"/>'
+        f'<text x="40" y="54" fill="#fff" font-size="30" font-weight="800">{html.escape(post["title"][:60])}</text>'
+        f'{"".join(rows)}'
+        f'<text x="1160" y="{total - 24}" text-anchor="end" fill="{a}" font-size="24" font-weight="800">market<tspan fill="#ee4d2d">lens</tspan> · Blog</text>'
+        f'<text x="40" y="{total - 24}" fill="#7a819a" font-size="18">Sơ đồ minh họa do MarketLens thiết kế</text></svg>'
+    )
+
+
+def steps_url(post):
+    return f'/blog/steps/{post["slug"]}.svg'
 
 
 def cover_url(post):
@@ -159,6 +205,14 @@ def index_html(base):
                 canonical, body, graph, keywords='blog bán hàng shopee, kinh nghiệm bán hàng shopee, hướng dẫn shopee')
 
 
+def steps_figure(post):
+    if not post.get('steps'):
+        return ''
+    titles = ', '.join(t for t, _ in post['steps'])
+    return (f'<figure class="steps"><img src="{steps_url(post)}" alt="Các bước: {esc(titles)}" width="1200" loading="lazy">'
+            '<figcaption>Sơ đồ các bước, do MarketLens thiết kế.</figcaption></figure>')
+
+
 def post_html(post, base):
     canonical = f'{base}/blog/{post["slug"]}'
     faq_items = ''.join(f'<details><summary>{esc(q)}</summary><p>{esc(a)}</p></details>' for q, a in post['faq'])
@@ -171,7 +225,7 @@ def post_html(post, base):
         f'<div class="post-meta">Đăng ngày <time datetime="{post["published"]}">{vi_date(post["published"])}</time> · {post["minutes"]} phút đọc · {esc(BRAND)}</div></header>'
         f'<figure class="cover"><img src="{cover_url(post)}" alt="Minh họa: {esc(post["title"])}" width="1200" height="630" fetchpriority="high">'
         f'<figcaption>Hình minh họa do MarketLens thiết kế.</figcaption></figure>'
-        f'{toc(post["body"])}<div class="prose">{post["body"]}</div>'
+        f'{toc(post["body"])}{steps_figure(post)}<div class="prose">{post["body"]}</div>'
         f'<section class="faq" aria-labelledby="faq-title"><h2 id="faq-title">Câu hỏi thường gặp</h2>{faq_items}</section>'
         f'{REFERENCE_NOTE}'
         '<div class="cta-box"><h2>Áp dụng ngay với dữ liệu của shop bạn</h2>'
@@ -234,6 +288,13 @@ def install(app):
         if not post:
             raise HTTPException(404, 'Không tìm thấy hình')
         return Response(cover_svg(post), media_type='image/svg+xml', headers={'Cache-Control': 'public, max-age=86400'})
+
+    @router.get('/blog/steps/{slug}.svg')
+    def blog_steps(slug: str):
+        post = BY_SLUG.get(slug)
+        if not post or not post.get('steps'):
+            raise HTTPException(404, 'Không tìm thấy hình')
+        return Response(steps_svg(post), media_type='image/svg+xml', headers={'Cache-Control': 'public, max-age=86400'})
 
     @router.get('/sitemap.xml')
     def sitemap(request: Request):

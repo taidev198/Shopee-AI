@@ -513,3 +513,9 @@ POSTS = [
         'related': ['dong-goi-va-giao-hang-cho-don-vi-van-chuyen-shopee', 'phuong-thuc-van-chuyen-shopee-nguoi-ban-can-biet', 'cach-tinh-gia-ban-va-loi-nhuan-shopee'],
     },
 ]
+
+from blog_posts_more import MORE, STEPS  # noqa: E402  (second batch + step lists for diagrams)
+
+POSTS.extend(MORE)
+for _post in POSTS:
+    _post.setdefault('steps', STEPS.get(_post['slug'], []))

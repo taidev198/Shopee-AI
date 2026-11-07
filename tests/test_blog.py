@@ -86,3 +86,25 @@ def test_cover_images_are_served_and_referenced(tmp_path, monkeypatch):
             assert f'content="https://shop.example.com/blog/cover/{post["slug"]}.svg"' in page
         assert anonymous.get('/blog/cover/none.svg').status_code == 404
         assert '/blog/cover/' in anonymous.get('/').text
+
+
+def test_step_diagrams_are_served_with_watermark(tmp_path, monkeypatch):
+    import blog_posts
+    with make_client(tmp_path, monkeypatch) as anonymous:
+        with_steps = [p for p in blog_posts.POSTS if p['steps']]
+        assert len(with_steps) >= 18
+        for post in with_steps:
+            image = anonymous.get(f'/blog/steps/{post["slug"]}.svg')
+            assert image.status_code == 200 and image.headers['content-type'].startswith('image/svg+xml')
+            assert 'market' in image.text and 'MarketLens thiết kế' in image.text
+            assert f'src="/blog/steps/{post["slug"]}.svg"' in anonymous.get(f'/blog/{post["slug"]}').text
+        assert anonymous.get('/blog/steps/none.svg').status_code == 404
+
+
+def test_blog_has_at_least_nineteen_unique_posts(tmp_path, monkeypatch):
+    import blog_posts
+    slugs = [p['slug'] for p in blog_posts.POSTS]
+    assert len(slugs) == len(set(slugs)) >= 19
+    for post in blog_posts.POSTS:
+        for slug in post['related']:
+            assert slug in slugs, (post['slug'], slug)
