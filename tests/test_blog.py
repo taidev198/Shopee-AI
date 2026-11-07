@@ -1,0 +1,74 @@
+import importlib
+import json
+import re
+
+from fastapi.testclient import TestClient
+
+
+def make_client(tmp_path, monkeypatch, site=''):
+    monkeypatch.setenv('MARKET_DB', str(tmp_path / 'market.db'))
+    monkeypatch.delenv('RENDER_EXTERNAL_URL', raising=False)
+    if site:
+        monkeypatch.setenv('SITE_URL', site)
+    else:
+        monkeypatch.delenv('SITE_URL', raising=False)
+    import app as app_module
+    return TestClient(importlib.reload(app_module).app)
+
+
+def test_blog_pages_are_public_and_seo_complete(tmp_path, monkeypatch):
+    import blog_posts
+    with make_client(tmp_path, monkeypatch, 'https://shop.example.com') as anonymous:
+        index = anonymous.get('/blog')
+        assert index.status_code == 200 and '<h1>' in index.text
+        assert '<link rel="canonical" href="https://shop.example.com/blog">' in index.text
+        for post in blog_posts.POSTS:
+            page = anonymous.get(f'/blog/{post["slug"]}')
+            assert page.status_code == 200, post['slug']
+            text = page.text
+            assert text.count('<h1>') == 1
+            assert len(post['title']) <= 62 and len(post['description']) <= 165, post['slug']
+            assert f'<link rel="canonical" href="https://shop.example.com/blog/{post["slug"]}">' in text
+            assert 'property="og:title"' in text and 'name="description"' in text
+            graph = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', text, re.S).group(1))
+            kinds = {item['@type'] for item in graph['@graph']}
+            assert kinds == {'BlogPosting', 'BreadcrumbList', 'FAQPage'}
+            assert 'banhang.shopee.vn/edu/article' in text  # reference link
+            for h2 in re.findall(r'<h2 id="([^"]+)">', post['body']):
+                assert f'href="#{h2}"' in text  # table of contents
+            for related in post['related']:
+                assert related in {p["slug"] for p in blog_posts.POSTS}
+        assert anonymous.get('/blog/khong-ton-tai').status_code == 404
+
+
+def test_internal_links_in_articles_resolve(tmp_path, monkeypatch):
+    import blog_posts
+    with make_client(tmp_path, monkeypatch) as anonymous:
+        for post in blog_posts.POSTS:
+            for link in re.findall(r'href="(/blog/[^"#]+)"', post['body']):
+                assert anonymous.get(link).status_code == 200, (post['slug'], link)
+
+
+def test_sitemap_and_robots(tmp_path, monkeypatch):
+    import blog_posts
+    with make_client(tmp_path, monkeypatch, 'https://shop.example.com') as anonymous:
+        sitemap = anonymous.get('/sitemap.xml')
+        robots = anonymous.get('/robots.txt')
+    assert sitemap.status_code == robots.status_code == 200
+    assert 'xml' in sitemap.headers['content-type']
+    for url in ['/', '/blog', '/privacy', '/terms'] + [f'/blog/{p["slug"]}' for p in blog_posts.POSTS]:
+        assert f'<loc>https://shop.example.com{url}</loc>' in sitemap.text
+    assert 'Sitemap: https://shop.example.com/sitemap.xml' in robots.text
+    assert 'Disallow: /api/' in robots.text
+
+
+def test_home_page_links_to_blog_and_has_seo_tags(tmp_path, monkeypatch):
+    import blog_posts
+    with make_client(tmp_path, monkeypatch, 'https://shop.example.com') as anonymous:
+        home = anonymous.get('/')
+    assert home.status_code == 200 and '{{' not in home.text
+    assert '<link rel="canonical" href="https://shop.example.com/">' in home.text
+    assert 'href="#blog"' in home.text and 'id="blog"' in home.text and 'href="/blog"' in home.text
+    for post in blog_posts.POSTS[:3]:
+        assert f'href="/blog/{post["slug"]}"' in home.text
+    assert 'banhang.shopee.vn/edu/article' in home.text

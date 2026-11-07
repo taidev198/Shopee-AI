@@ -310,3 +310,11 @@ Hai trang công khai (không cần đăng nhập), song ngữ Việt/Anh, dùng 
 - `LEGAL_CONTACT_EMAIL` — email nhận yêu cầu về dữ liệu và điều khoản
 
 Nội dung mô tả đúng hiện trạng ứng dụng (tài khoản băm PBKDF2, Neon/Render, Ollama, tiện ích Chrome chỉ đọc khi bạn bấm); hãy nhờ chuyên gia pháp lý rà soát trước khi dùng cho mục đích thương mại.
+
+## Blog công khai (SEO)
+
+- Trang chủ có mục **Blog** (3 bài mới nhất); danh sách đầy đủ tại `/blog`, từng bài tại `/blog/<slug>`.
+- Bài viết là nội dung gốc, nằm trong `blog_posts.py` (thêm bài = thêm một mục vào `POSTS`: slug, title ≤ 60 ký tự, description ≤ 160, body HTML có `<h2 id>`, faq, related). Có dẫn nguồn tham khảo https://banhang.shopee.vn/edu/article.
+- SEO: HTML dựng phía máy chủ, `<title>`/description/canonical/Open Graph, JSON-LD (BlogPosting, BreadcrumbList, FAQPage), mục lục, liên kết nội bộ, `/sitemap.xml`, `/robots.txt`.
+- Đặt biến `SITE_URL` (ví dụ `https://shopee-ai.onrender.com`) để canonical/sitemap dùng đúng tên miền; mặc định lấy `RENDER_EXTERNAL_URL` hoặc địa chỉ request.
+- Sau khi deploy: gửi `https://<tên-miền>/sitemap.xml` trong Google Search Console.

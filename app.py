@@ -370,6 +370,9 @@ class ShopCreate(BaseModel):
 from ui_roles import install as install_ui_roles
 install_ui_roles(app, ROOT)
 
+from blog import install as install_blog
+install_blog(app)
+
 
 def _legal_page(name):
     """Public Privacy Policy / Terms pages; operator name and contact come from the environment."""

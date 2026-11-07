@@ -3,7 +3,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 
 USER_VIEWS = frozenset(('overview', 'myShops', 'shopAnalysis', 'products', 'optimizer',
@@ -35,8 +35,11 @@ def install(app, root):
         return RedirectResponse(path + ('?' + query if query else ''), status_code=307)
 
     @router.get('/')
-    def home():
-        return FileResponse(static / 'guest.html')
+    def home(request: Request):
+        import blog
+        text = (static / 'guest.html').read_text(encoding='utf-8')
+        text = text.replace('{{SITE_URL}}', blog.site_url(request)).replace('{{BLOG_CARDS}}', blog.home_cards(3))
+        return Response(text, media_type='text/html; charset=utf-8')
 
     @router.get('/guest')
     def guest(request: Request):
