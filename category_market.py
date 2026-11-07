@@ -430,14 +430,43 @@ def install(app, db, Detail, identity):
         unique = {(r['sku'], r['day']): r for r in rows}
         return features(list(unique.values()))
 
+    def summary(row):
+        """Exact text as shown on the product page (price, rating, reviews, variants); nothing rounded."""
+        item = {k: v for k, v in row.items() if k != 'raw_json'}
+        try:
+            raw = json.loads(row.get('raw_json') or '{}')
+        except ValueError:
+            raw = {}
+        item.update(price_text=raw.get('price_text', ''), rating_text=raw.get('rating_text', ''),
+                    review_count_text=raw.get('review_count_text', ''), sold_text=raw.get('sold_text', ''),
+                    stock_text=raw.get('stock_text', ''), variants=raw.get('variants') or [],
+                    image=(raw.get('images') or [''])[0], categories=raw.get('categories') or [])
+        return item
+
     @router.get('/products')
     def products(category_id: str = '', all_rows: bool = False):
         rows = dataset(category_id)
         latest = {r['sku']: r for r in rows}
         values = sorted(latest.values(), key=lambda r: (r['trend_score'] is not None, r['trend_score'] or 0), reverse=True)
-        return {'products': [{k: v for k, v in r.items() if k != 'raw_json'} for r in (values if all_rows else values[:500])],
+        return {'products': [summary(r) for r in (values if all_rows else values[:500])],
                 'product_count': len(values), 'snapshot_count': len(rows),
                 'eligible_count': sum(r['trend_score'] is not None for r in values)}
+
+    @router.get('/product')
+    def product(sku: str, category_id: str = ''):
+        """Full stored detail of one collected product (description, images, variants, attributes…)."""
+        with db() as c:
+            row = c.execute('''SELECT s.*,c.name AS category FROM market_snapshots s JOIN market_categories c ON c.id=s.category_id
+              WHERE s.sku=? AND (?='' OR s.category_id=?) ORDER BY s.day DESC,s.collected_at DESC LIMIT 1''', (sku, category_id, category_id)).fetchone()
+        if not row:
+            raise HTTPException(404, 'Không tìm thấy sản phẩm đã thu thập.')
+        row = dict(row)
+        try:
+            detail = json.loads(row.pop('raw_json') or '{}')
+        except ValueError:
+            detail = {}
+        detail['collected_at'] = row['collected_at']
+        return {**row, 'detail': detail}
 
     @router.get('/export')
     def export(category_id: str = '', format: str = 'csv'):

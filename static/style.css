@@ -35,3 +35,4 @@
 .cmd-block{margin:6px 0 12px;padding:10px 12px;border-radius:10px;background:#1e1530;color:#f4efff;overflow-x:auto;font-size:12px;user-select:all}
 .cmd-block code{background:none;color:inherit;white-space:pre}
 .competitor-name-search{margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #e6eafc}.competitor-name-row{display:flex;gap:10px;margin-top:9px}.competitor-name-row input{flex:1;min-width:0;padding:11px 13px;border:1px solid #d9e0f1;border-radius:9px;font:inherit;font-size:13px}.competitor-name-row .btn{white-space:nowrap}@media(max-width:620px){.competitor-name-row{flex-direction:column}}
+.market-product-cell{display:flex;gap:11px;align-items:flex-start;min-width:280px}.market-thumb{width:52px;height:52px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fafbfe;flex:none}.market-variants{min-width:170px;font-size:11px;line-height:1.6}.market-dataset td{vertical-align:top}

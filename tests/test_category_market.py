@@ -453,3 +453,18 @@ def test_category_run_without_shop_keeps_only_market_snapshots(client):
     client.post(root + '/listing', json={'page': 0, 'urls': ['https://shopee.vn/product/12/34'], 'has_next': False})
     client.post(root + '/detail', json={'url': 'https://shopee.vn/product/12/34', 'name': 'San pham', 'price_text': '10.000₫'})
     assert client.get('/api/listings/sources', params={'shop_id': shop['id']}).json() == []
+
+
+def test_dataset_lists_exact_texts_and_full_detail_is_openable(client):
+    rid = create(client, max_pages=1, max_products=5)
+    root = f'/api/category-market/runs/{rid}'
+    client.post(root + '/listing', json={'page': 0, 'urls': ['https://shopee.vn/product/12/34'], 'has_next': False})
+    client.post(root + '/detail', json={'url': 'https://shopee.vn/product/12/34', 'name': 'Gio dung', 'description': 'Mo ta',
+        'price_text': '₫89.000 - ₫129.500', 'rating_text': '4.87', 'review_count_text': '1,2k', 'sold_text': '1,2k đã bán',
+        'images': ['https://down-vn.img.susercontent.com/file/a'], 'variants': [{'name': 'Màu', 'options': ['Trắng', 'Xám']}]})
+    item = client.get('/api/category-market/products').json()['products'][0]
+    assert item['price_text'] == '₫89.000 - ₫129.500' and item['rating_text'] == '4.87' and item['review_count_text'] == '1,2k'
+    assert item['variants'][0]['options'] == ['Trắng', 'Xám'] and 'raw_json' not in item and 'description' not in item
+    full = client.get('/api/category-market/product', params={'sku': item['sku']}).json()
+    assert full['detail']['description'] == 'Mo ta' and full['detail']['collected_at'] and full['url'].startswith('https://shopee.vn/')
+    assert client.get('/api/category-market/product', params={'sku': 'missing'}).status_code == 404

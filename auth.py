@@ -410,7 +410,7 @@ def user_permission(path, method):
         return 'global' if method in ('GET', 'POST') else None
     if path == '/api/seller/ai/config':
         return 'global' if method == 'GET' else None
-    if path in ('/api/category-market/analysis', '/api/category-market/products', '/api/category-market/export', '/api/category-market/ml/export'):
+    if path in ('/api/category-market/analysis', '/api/category-market/products', '/api/category-market/product', '/api/category-market/export', '/api/category-market/ml/export'):
         return 'global' if method == 'GET' else None
     if path == '/api/crawl/config':
         return 'global' if method == 'GET' else None

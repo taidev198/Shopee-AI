@@ -137,7 +137,11 @@ function renderCategoryMarket() {
   <div class="table-wrap"><table class="data-table market-runs-table" data-pagination-key="category-runs"><thead><tr><th>Ngành hàng</th><th>Phạm vi</th><th>Tiến độ</th><th>Trạng thái / ghi chú</th><th>Thao tác</th></tr></thead><tbody>${m.runs.map(r=>`<tr data-pagination-id="${esc(r.id)}"><td>${esc(r.name)}<small class="muted"> · ${esc(r.created_at.slice(0,10))}</small></td><td>${r.full_scan?`${r.page} trang · quét hết trang hiển thị`:`${r.page}/${r.max_pages} trang · tối đa ${r.max_products} SP`}</td><td>${r.completed}/${r.discovered} SP · lỗi ${r.failed}</td><td>${esc(r.superseded?'Đã chuyển sang lượt mới':({pending:'Chờ / sẵn sàng',paused:'Tạm dừng',done:'Xong phạm vi',partial:'Xong, có lỗi'})[r.status])}<br><small>${esc(r.error)}</small></td><td class="market-run-actions">${marketRunActions(r)}</td></tr>`).join('') || '<tr><td colspan="5">Chưa có hàng đợi.</td></tr>'}</tbody></table></div></section>
   <section class="panel"><div class="panel-head"><div><h3 class="panel-title">3. Tín hiệu hot trend & dataset máy học</h3><p class="panel-sub">Điểm quy tắc tham khảo, chưa phải mô hình ML đã huấn luyện. Tổng đã bán không phải doanh số 30 ngày.</p></div><div><a class="btn btn-white" href="/api/category-market/export?format=csv&category_id=${encodeURIComponent(m.filter)}">↓ Features CSV</a> <a class="btn btn-white" href="/api/category-market/export?format=jsonl&category_id=${encodeURIComponent(m.filter)}">↓ Dữ liệu gốc JSONL</a></div></div>
   <div class="controls"><label>Ngành hàng<select id="marketFilter" data-pagination-filter><option value="">Tất cả ngành hàng</option>${[...new Map(m.runs.map(r=>[r.category_id,r])).values()].map(r=>`<option value="${esc(r.category_id)}" ${m.filter===r.category_id?'selected':''}>${esc(r.name)}</option>`).join('')}</select></label><button class="btn btn-soft" id="marketRefresh">Làm mới</button></div>
-  <div class="table-wrap"><table class="data-table" data-pagination-key="category-dataset"><thead><tr><th>Sản phẩm</th><th>Giá</th><th>Tổng đã bán</th><th>Δ bán / ngày</th><th>Gia tốc</th><th>Điểm xu hướng</th></tr></thead><tbody>${m.products.map(p=>`<tr data-pagination-id="${esc(p.sku)}"><td class="product-name"><a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a><br><small>${esc(p.category)} · ${esc(p.day)}</small></td><td>${money(p.price)}</td><td>${num(p.sold_total)}${p.sold_approx?' (làm tròn)':''}</td><td>${p.velocity==null?'—':p.velocity.toFixed(2)}</td><td>${p.acceleration==null?'—':p.acceleration.toFixed(2)}</td><td>${p.trend_score??'—'}<br><small>${esc(p.reason)}</small></td></tr>`).join('') || '<tr><td colspan="6">Chưa có quan sát. Chạy hàng đợi để thu thập dữ liệu thật.</td></tr>'}</tbody></table></div><p class="small-help">Đã tải ${num(m.products.length)}/${num(m.stats.product_count||0)} sản phẩm trong bộ lọc; phân trang chỉ thay đổi phần đang hiển thị. Bản xuất chứa toàn bộ lịch sử trong bộ lọc. Số bán dạng 1k / 1k+ không được dùng tính tăng trưởng. CSV chứa đặc trưng tính từ hiện tại và quá khứ; nhãn tương lai cần tạo riêng khi huấn luyện và chia tập theo thời gian.</p></section>`;
+  <div class="table-wrap"><table class="data-table market-dataset" data-pagination-key="category-dataset"><thead><tr><th>Sản phẩm</th><th>Giá</th><th>Đánh giá</th><th>Phân loại</th><th>Tổng đã bán</th><th>Δ bán / ngày</th><th>Gia tốc</th><th>Điểm xu hướng</th></tr></thead><tbody>${m.products.map(p=>{
+    const link=marketSafeUrl(p.url);
+    const thumb=marketSafeUrl(p.image,true);
+    const variants=(Array.isArray(p.variants)?p.variants:[]).map(g=>`<div><strong>${esc(g.name)}:</strong> ${esc((Array.isArray(g.options)?g.options:[]).join(', '))}</div>`).join('');
+    return `<tr data-pagination-id="${esc(p.sku)}"><td class="product-name market-product-cell">${thumb?`<img class="market-thumb" src="${esc(thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:''}<div><button type="button" class="product-detail-link" data-market-product="${esc(p.sku)}" data-market-category-id="${esc(p.category_id)}">${esc(p.name)}</button>${link?` <a class="text-link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">Mở trên Shopee ↗</a>`:''}<br><small>${esc(p.category)} · ${esc(p.day)}</small></div></td><td class="numeric">${esc(p.price_text)||money(p.price)}</td><td>${p.rating_text||p.rating!=null?`★ ${esc(p.rating_text||p.rating)}`:'—'}<br><small>${esc(p.review_count_text||(p.review_count!=null?String(p.review_count):'—'))} lượt đánh giá</small></td><td class="market-variants">${variants||'—'}</td><td>${esc(p.sold_text)||num(p.sold_total)}${p.sold_approx?' (làm tròn)':''}</td><td>${p.velocity==null?'—':p.velocity.toFixed(2)}</td><td>${p.acceleration==null?'—':p.acceleration.toFixed(2)}</td><td>${p.trend_score??'—'}<br><small>${esc(p.reason)}</small></td></tr>`}).join('') || '<tr><td colspan="8">Chưa có quan sát. Chạy hàng đợi để thu thập dữ liệu thật.</td></tr>'}</tbody></table></div><p class="small-help">Đã tải ${num(m.products.length)}/${num(m.stats.product_count||0)} sản phẩm trong bộ lọc; phân trang chỉ thay đổi phần đang hiển thị. Bản xuất chứa toàn bộ lịch sử trong bộ lọc. Giá, đánh giá, số lượt đánh giá và phân loại hiển thị đúng chữ đã đọc trên trang sản phẩm, không làm tròn. Số bán dạng 1k / 1k+ không được dùng tính tăng trưởng. CSV chứa đặc trưng tính từ hiện tại và quá khứ; nhãn tương lai cần tạo riêng khi huấn luyện và chia tập theo thời gian.</p></section>`;
 }
 function marketRender() {
   if (!['categoryMarket','marketSchedules'].includes(S.view)) return;
@@ -327,6 +331,8 @@ document.addEventListener('change', e=>{
   if (e.target.id === 'marketFilter') { marketState.filter=e.target.value; refreshMarket(); }
 });
 document.addEventListener('click', async e=>{
+  const productButton=e.target.closest('[data-market-product]');
+  if (productButton?.dataset?.marketProduct) return marketOpenProduct(productButton);
   if (window.MarketLensAuth&&!window.MarketLensAuth.canCollect) return;
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   try {
@@ -481,4 +487,21 @@ async function scanAllMarket() {
     } catch(e) {return marketExplain('Chưa bắt đầu quét: '+e.message);}
   }
   return collectAll();
+}
+async function marketOpenProduct(button) {
+  button.disabled = true;
+  try {
+    const query = `sku=${encodeURIComponent(button.dataset.marketProduct)}&category_id=${encodeURIComponent(button.dataset.marketCategoryId || '')}`;
+    const item = await api('/api/category-market/product?' + query);
+    showProductDetail({role: 'market', source_shop: '', sku: item.sku, name: item.name, product_url: item.url, detail: item.detail});
+  } catch (error) { toast(error.message || 'Không mở được chi tiết sản phẩm.'); }
+  finally { button.disabled = false; }
+}
+function marketSafeUrl(value, image = false) {
+  try {
+    const url = new URL(value), host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return '';
+    const hosts = image ? ['shopee.vn', 'susercontent.com', 'shopeeusercontent.com'] : ['shopee.vn'];
+    return hosts.some(domain => host === domain || host.endsWith('.' + domain)) ? url.href : '';
+  } catch { return ''; }
 }
