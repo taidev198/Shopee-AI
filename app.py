@@ -381,6 +381,17 @@ def _legal_page(name):
     return Response(text, media_type='text/html; charset=utf-8', headers={'Cache-Control': 'public, max-age=300'})
 
 
+@app.get('/tiktok{token}.txt', include_in_schema=False)
+def tiktok_domain_verification(token: str):
+    """Serve TikTok's domain-verification file (static/tiktok<token>.txt) from the site root."""
+    if not re.fullmatch(r'[A-Za-z0-9]{8,64}', token):
+        raise HTTPException(404, 'Not Found')
+    path = ROOT / 'static' / f'tiktok{token}.txt'
+    if not path.is_file():
+        raise HTTPException(404, 'Not Found')
+    return Response(path.read_text(encoding='utf-8'), media_type='text/plain; charset=utf-8')
+
+
 @app.get('/privacy', include_in_schema=False)
 def privacy_policy():
     return _legal_page('privacy')
