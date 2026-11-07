@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from blog_posts import POSTS, REFERENCE_NOTE, REFERENCE_URL
 
 BY_SLUG = {p['slug']: p for p in POSTS}
-CSS = '/static/blog.css?v=20261107-blog-02'
+CSS = '/static/blog.css?v=20261107-blog-03'
 BRAND = 'MarketLens'
 
 
@@ -31,8 +31,11 @@ ICONS = {
     'cach-nghien-cuu-doi-thu-tren-shopee': '<rect x="-62" y="-45" width="58" height="90" rx="8" fill="none" stroke="#fff" stroke-width="8"/><rect x="6" y="-45" width="58" height="90" rx="8" fill="#fff" opacity=".85"/><path d="M-50 -15h34M-50 2h34M-50 19h20" stroke="#fff" stroke-width="6" stroke-linecap="round"/>',
     'cach-chon-san-pham-hot-trend-de-ban-shopee': '<path d="M-62 40l42-48 28 28 58-70" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 -50h46v46" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>',
     'hinh-anh-video-san-pham-shopee': '<rect x="-64" y="-42" width="128" height="88" rx="12" fill="none" stroke="#fff" stroke-width="8"/><circle cx="-26" cy="-14" r="10" fill="#fff"/><path d="M-64 30l38-34 30 26 20-16 40 34" fill="#fff" opacity=".8"/>',
+    'dong-goi-va-giao-hang-cho-don-vi-van-chuyen-shopee': '<path d="M-60 -25l60 -30 60 30v60l-60 30-60-30z M-60 -25l60 30 60-30 M0 5v60" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round"/>',
+    'phuong-thuc-van-chuyen-shopee-nguoi-ban-can-biet': '<path d="M-64 -30h72v62h-72z M8 -10h32l24 24v18H8z" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round"/><circle cx="-36" cy="40" r="12" fill="#fff"/><circle cx="36" cy="40" r="12" fill="#fff"/>',
+    'van-hanh-shop-shopee-dip-cao-diem-tet': '<rect x="-56" y="-40" width="112" height="100" rx="10" fill="none" stroke="#fff" stroke-width="8"/><path d="M-56 -10h112M-28 -58v28M28 -58v28" stroke="#fff" stroke-width="8" stroke-linecap="round"/><path d="M-30 20l14 14 30-30" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>',
 }
-PALETTES = [('#7152cf', '#4b34a8'), ('#ee4d2d', '#b8331a'), ('#28876b', '#1a5e4a'), ('#2d6cdf', '#1d4aa3'), ('#c2410c', '#8a2f08'), ('#9333ea', '#6b21a8')]
+PALETTES = [('#7152cf', '#4b34a8'), ('#ee4d2d', '#b8331a'), ('#28876b', '#1a5e4a'), ('#2d6cdf', '#1d4aa3'), ('#c2410c', '#8a2f08'), ('#9333ea', '#6b21a8'), ('#0e7490', '#155e75'), ('#b45309', '#78350f'), ('#be185d', '#831843')]
 
 
 def cover_svg(post):

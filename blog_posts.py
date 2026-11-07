@@ -45,6 +45,9 @@ POSTS = [
 <li>Mặt hàng có thuộc nhóm cấm hoặc cần giấy phép không? Kiểm tra trước để tránh bị gỡ sản phẩm hay khóa shop.</li>
 </ol>
 
+<h2 id="nghien-cuu-nhu-cau">Nghiên cứu nhu cầu trước, tìm nguồn hàng sau</h2>
+<p>Sai lầm phổ biến của người mới là tìm được nguồn hàng rồi mới hỏi “ai sẽ mua?”. Hãy đảo thứ tự: xác định khách đang cần gì, rồi mới tìm sản phẩm đáp ứng. Bạn có thể quan sát câu hỏi của khách trong các nhóm và cộng đồng trên mạng xã hội, xem từ khóa nào được tìm nhiều mà ít nơi đáp ứng bằng công cụ xu hướng tìm kiếm, và xem ngành hàng nào đang bán đều ngay trên Shopee. Sau đó đối chiếu với sở thích và thế mạnh của bạn, vì bạn sẽ làm việc với nhóm hàng này lâu dài.</p>
+
 <h2 id="dang-san-pham">3. Đăng sản phẩm đầu tiên đúng cách</h2>
 <p>Sản phẩm là “mặt tiền” của shop. Một bài đăng đầy đủ gồm:</p>
 <ul>
@@ -60,6 +63,9 @@ POSTS = [
 
 <h2 id="khuyen-mai">5. Dùng khuyến mãi có kế hoạch</h2>
 <p>Voucher của shop, combo, mua kèm và các chương trình của sàn giúp tăng chuyển đổi, nhưng chỉ nên dùng khi bạn đã biết giá hòa vốn. Quy tắc đơn giản: mỗi chương trình phải có mục tiêu (kéo đơn đầu tiên, tăng giá trị đơn, xả tồn) và một mức lãi tối thiểu bạn chấp nhận.</p>
+
+<h2 id="quang-cao">Cân nhắc quảng cáo khi đã có dữ liệu</h2>
+<p>Thị trường cạnh tranh nên chỉ đăng sản phẩm thường chưa đủ để được thấy. Quảng cáo giúp tăng tiếp cận, nhưng chỉ nên bật khi sản phẩm đã có ảnh tốt, mô tả rõ và lãi mỗi đơn đủ để gánh chi phí quảng cáo. Bắt đầu với ngân sách nhỏ cho một vài sản phẩm chủ lực, theo dõi chi phí trên mỗi đơn và dừng những nhóm không có lãi.</p>
 
 <h2 id="cham-soc-khach">6. Chăm sóc khách hàng và giữ điểm shop</h2>
 <p>Trả lời tin nhắn nhanh, giao hàng đúng hẹn, xử lý đổi trả lịch sự. Những chỉ số này ảnh hưởng đến uy tín shop và khả năng được hiển thị. Đừng bỏ qua đánh giá thấp: đọc chúng để biết sản phẩm hoặc mô tả đang thiếu gì và sửa ngay.</p>
@@ -343,5 +349,167 @@ POSTS = [
             ('Có thể dùng lại ảnh của nhà cung cấp không?', 'Chỉ khi bạn được cho phép sử dụng. Nếu không chắc, hãy tự chụp hoặc xin phép bằng văn bản để tránh tranh chấp bản quyền.'),
         ],
         'related': ['toi-uu-tieu-de-mo-ta-san-pham-shopee', 'cach-ban-hang-tren-shopee-cho-nguoi-moi', 'cach-nghien-cuu-doi-thu-tren-shopee'],
+    },
+    {
+        'slug': 'dong-goi-va-giao-hang-cho-don-vi-van-chuyen-shopee',
+        'title': 'Đóng gói và giao hàng cho đơn vị vận chuyển Shopee',
+        'h1': 'Đóng gói và giao hàng cho đơn vị vận chuyển: quy trình xử lý đơn gọn, ít sai sót',
+        'description': 'Cách tổ chức soạn hàng, đóng gói và bàn giao cho đơn vị vận chuyển trên Shopee: thứ tự ưu tiên đơn, mẹo đóng gói, lúc shipper đến lấy và khi tự ra bưu cục.',
+        'keywords': 'đóng gói hàng shopee, giao hàng cho đơn vị vận chuyển, xử lý đơn hàng shopee, bàn giao đơn hàng',
+        'category': 'Vận hành',
+        'minutes': 6,
+        'published': '2026-11-07',
+        'summary': 'Cách chia việc kho, ưu tiên đơn theo hạn gửi, đóng gói đúng cách và bàn giao cho shipper hoặc bưu cục mà không bị trễ hạn.',
+        'body': '''
+<p>Khách chỉ nhớ hai điều sau khi mua hàng: hàng có đúng không và có đến nhanh không. Cả hai đều quyết định ở khâu soạn, đóng gói và bàn giao. Một quy trình rõ ràng giúp shop giảm giao trễ, giảm hoàn trả và giữ điểm vận hành ổn định.</p>
+
+<h2 id="phan-vai-tro">1. Phân vai trong kho</h2>
+<p>Dù chỉ có một hai người, hãy tách rõ bốn việc: <strong>sắp xếp đơn giao cho đơn vị vận chuyển</strong>, <strong>in phiếu gửi hàng và mã vận đơn</strong>, <strong>soạn sản phẩm vào đúng hộp</strong> và <strong>đóng gói, dán phiếu, bàn giao</strong>. Một người có thể kiêm nhiều việc, nhưng phải biết mình đang làm bước nào và ai chịu trách nhiệm điều phối. Kho gọn gàng, có chỗ để cố định cho từng loại vật liệu, sẽ giúp bạn xử lý nhanh hơn khi đơn tăng.</p>
+
+<h2 id="uu-tien-don">2. Ưu tiên đơn theo hạn gửi</h2>
+<ul>
+<li>Xử lý theo từng đợt dựa trên <strong>hạn gửi hàng</strong>, không theo thứ tự ngẫu nhiên.</li>
+<li>Trong mỗi đợt, làm trước đơn đã sát hoặc quá hạn và các đơn giao nhanh trong ngày, sau đó mới đến đơn giao tiêu chuẩn và các điểm nhận hàng.</li>
+<li><strong>Tách đơn một sản phẩm</strong> khỏi đơn nhiều sản phẩm. Đơn một món đóng nhanh hơn, có thể giao hết cho một người xử lý liên tục.</li>
+<li>Dùng chức năng giao hàng loạt và bộ lọc theo mã sản phẩm (SKU) trong Kênh Người Bán để gom nhóm.</li>
+</ul>
+
+<h2 id="meo-dong-goi">3. Mẹo soạn hàng và đóng gói</h2>
+<ol>
+<li>Soạn hàng của mỗi đơn vào một khay hoặc hộp riêng, phiếu gửi hàng để riêng để kiểm tra lại trước khi dán.</li>
+<li>Để toàn bộ vật liệu (hộp, băng keo, xốp, túi chống sốc) ở cùng một khu vực, tránh phải đi lấy giữa chừng.</li>
+<li>Chia khu đóng gói theo tính chất hàng: dễ vỡ, dễ hỏng, giá trị cao.</li>
+<li>Đóng đúng theo quy định đóng gói hiện hành của Shopee và quy định theo từng ngành hàng.</li>
+<li>Kiểm tra phiếu gửi hàng dán thẳng, không nhăn, mã quét được. Mã quét lỗi là nguyên nhân hay gặp khiến shipper không xác nhận lấy hàng được.</li>
+</ol>
+
+<h2 id="khi-shipper-den">4. Khi shipper đến lấy hàng</h2>
+<ul>
+<li>Chuẩn bị sẵn kiện hàng trước giờ hẹn và bố trí khu bàn giao gần cửa để shipper ra vào nhanh.</li>
+<li>Tách kiện theo thời điểm cần lấy (hôm nay, ngày mai) và theo từng phương thức vận chuyển để không nhầm nhãn.</li>
+<li>Cập nhật đúng địa chỉ và số liên hệ của shop để shipper tìm đến chính xác.</li>
+<li>Yêu cầu quét mã ngay tại chỗ để xác nhận lấy hàng thành công.</li>
+<li>Nếu shipper chưa đến mà sắp hết giờ làm việc của shop, gọi số hiển thị trong màn hình bàn giao đơn hàng và ghi lại các lần lấy hàng không thành công làm bằng chứng khi cần khiếu nại.</li>
+</ul>
+
+<h2 id="tu-mang-ra-buu-cuc">5. Khi tự mang hàng ra bưu cục</h2>
+<p>Biết trước vị trí và giờ làm việc của bưu cục gần bạn. Mang những kiện chưa được lấy theo lịch ra bưu cục đủ sớm để kịp hạn gửi, và luôn yêu cầu nhân viên quét mã ngay tại quầy.</p>
+
+<h2 id="khi-co-su-co">6. Khi có sự cố</h2>
+<p>Nếu vấn đề phát sinh ở khâu giao nhận, liên hệ trực tiếp đơn vị vận chuyển để được xử lý nhanh nhất. Nếu bạn bị tính lỗi oan vì shipper không đến lấy hoặc lấy trễ, hãy xem chính sách khiếu nại hiện hành của Shopee và gửi khiếu nại kèm bằng chứng đã ghi lại.</p>
+''',
+        'faq': [
+            ('Nên xử lý đơn theo thứ tự nào?', 'Theo hạn gửi hàng: đơn sát hạn hoặc quá hạn và đơn giao nhanh trước, sau đó đến đơn tiêu chuẩn. Tách đơn một sản phẩm ra xử lý riêng để tăng tốc.'),
+            ('Shipper không đến lấy hàng thì làm gì?', 'Gọi số điện thoại hiển thị trong màn hình bàn giao đơn hàng, ghi lại lần lấy không thành công và đưa hàng ra bưu cục nếu sắp hết hạn gửi. Nếu bị tính lỗi oan, khiếu nại theo hướng dẫn của Shopee.'),
+            ('Cần chuẩn bị vật liệu đóng gói gì?', 'Hộp hoặc túi đúng kích cỡ, băng keo, vật liệu chống sốc cho hàng dễ vỡ và giấy in phiếu gửi hàng. Giữ tất cả ở một khu vực để đóng gói liên tục.'),
+        ],
+        'related': ['phuong-thuc-van-chuyen-shopee-nguoi-ban-can-biet', 'van-hanh-shop-shopee-dip-cao-diem-tet', 'cach-ban-hang-tren-shopee-cho-nguoi-moi'],
+    },
+    {
+        'slug': 'phuong-thuc-van-chuyen-shopee-nguoi-ban-can-biet',
+        'title': 'Phương thức vận chuyển Shopee: người bán cần biết gì',
+        'h1': 'Phương thức vận chuyển trên Shopee: người bán cần biết và cài đặt thế nào',
+        'description': 'Tổng quan các nhóm phương thức vận chuyển trên Shopee, giới hạn cân nặng kích thước, cách đơn được phân bổ cho đơn vị vận chuyển và mẹo cài đặt cho shop.',
+        'keywords': 'phương thức vận chuyển shopee, cài đặt vận chuyển shopee, phí vận chuyển shopee, đơn vị vận chuyển shopee',
+        'category': 'Vận hành',
+        'minutes': 6,
+        'published': '2026-11-07',
+        'summary': 'Các nhóm phương thức vận chuyển, vì sao nên bật nhiều lựa chọn, cách đơn được phân bổ và cách nhập cân nặng, kích thước cho đúng.',
+        'body': '''
+<p>Vận chuyển ảnh hưởng trực tiếp đến tỷ lệ chốt đơn: khách nhìn phí và thời gian giao ngay trên trang sản phẩm. Hiểu các phương thức và cài đặt đúng giúp shop vừa bán được nhiều hơn, vừa ít phát sinh sự cố.</p>
+
+<h2 id="cac-nhom">1. Các nhóm phương thức</h2>
+<p>Shopee gom vận chuyển thành các nhóm theo tốc độ và cách nhận hàng. Danh sách và tên gọi có thể thay đổi, nhưng nhìn chung gồm:</p>
+<ul>
+<li><strong>Giao hỏa tốc và trong ngày:</strong> dành cho đơn cần đến nhanh trong nội thành, thường áp giới hạn cân nặng và kích thước chặt hơn.</li>
+<li><strong>Giao nhanh (tiêu chuẩn):</strong> lựa chọn phổ biến cho phần lớn đơn hàng.</li>
+<li><strong>Hàng cồng kềnh:</strong> cho kiện lớn, nặng hơn mức giao nhanh thông thường.</li>
+<li><strong>Nhận hàng tại tủ hoặc điểm nhận:</strong> khách chủ động ra lấy, thường chi phí thấp hơn.</li>
+<li><strong>Người bán tự vận chuyển:</strong> shop tự giao theo điều kiện riêng, phù hợp khi hàng đặc thù.</li>
+</ul>
+
+<h2 id="vi-sao-bat-nhieu">2. Vì sao nên bật nhiều phương thức</h2>
+<p>Khách có nhu cầu khác nhau: người cần gấp chọn giao nhanh, người tiết kiệm chọn nhận tại điểm. Bật nhiều lựa chọn phù hợp với sản phẩm giúp shop không bỏ lỡ nhóm khách nào. Một số nhóm hàng đặc biệt (hàng nguy hiểm, thực phẩm cần bảo quản, hàng tươi sống) bị giới hạn phương thức, và Shopee có thể điều chỉnh mặc định theo chính sách từng thời kỳ. Hãy xem thông báo mới nhất trong Kênh Người Bán thay vì nhớ theo số cũ.</p>
+
+<h2 id="gioi-han">3. Cân nặng và kích thước sau đóng gói</h2>
+<p>Mỗi phương thức có giới hạn tối đa về kích thước từng cạnh và cân nặng. Quy tắc nên nhớ:</p>
+<ol>
+<li>Nhập số đo <strong>sau khi đóng gói</strong>, không phải số đo sản phẩm trần.</li>
+<li>Cân thật bằng cân, đo thật bằng thước cho vài đơn mẫu rồi dùng làm chuẩn.</li>
+<li>Khai thấp hơn thực tế dễ bị phát sinh phí; khai cao hơn làm phí hiển thị cao khiến khách bỏ đi.</li>
+<li>Kiểm tra giới hạn hiện hành của từng phương thức trước khi bật cho sản phẩm cồng kềnh.</li>
+</ol>
+
+<h2 id="phan-bo-don">4. Đơn được phân bổ cho đơn vị vận chuyển thế nào</h2>
+<p>Hệ thống thường phân bổ dựa trên khu vực hoạt động, giới hạn cân nặng kích thước và chất lượng dịch vụ của từng đơn vị (đúng hạn lấy hàng, đúng hạn giao, tỷ lệ giao không thành công, tỷ lệ thất lạc hoặc hư hỏng). Khách cũng có thể tự chọn đơn vị phù hợp trong mạng lưới nền tảng cung cấp. Vì vậy, shop nên chuẩn bị để làm việc với nhiều đơn vị khác nhau và đừng giả định lúc nào cũng là một đơn vị quen thuộc.</p>
+
+<h2 id="cai-dat">5. Cài đặt và mẹo thực hành</h2>
+<ul>
+<li>Thiết lập tại trang cài đặt vận chuyển của shop, sau đó kiểm tra lại trong chi tiết từng sản phẩm.</li>
+<li>Khi đăng hàng loạt, tải bản mẫu mới nhất trước khi cập nhật để tránh thiếu trường vận chuyển.</li>
+<li>Chọn đúng hình thức “đơn vị vận chuyển đến lấy” cho những đơn bạn muốn shipper đến tận nơi.</li>
+<li>Chuẩn bị biên bản giao nhận để đối chiếu khi có tranh chấp.</li>
+<li>Đối xử tử tế với tài xế: chỗ ngồi chờ, nước uống. Quan hệ tốt giúp việc bàn giao suôn sẻ hơn.</li>
+</ul>
+<p>Muốn biết phí vận chuyển ảnh hưởng thế nào đến lãi mỗi đơn, xem bài <a href="/blog/cach-tinh-gia-ban-va-loi-nhuan-shopee">cách tính giá bán và lợi nhuận</a>.</p>
+''',
+        'faq': [
+            ('Có nên bật tất cả phương thức vận chuyển không?', 'Nên bật mọi phương thức phù hợp với sản phẩm để không bỏ lỡ nhóm khách nào, trừ những nhóm hàng bị giới hạn theo chính sách của Shopee.'),
+            ('Nhập cân nặng bao nhiêu cho đúng?', 'Nhập cân nặng và kích thước sau khi đóng gói, đo thật vài đơn mẫu. Khai sai làm phát sinh phí hoặc làm khách thấy phí vận chuyển cao.'),
+            ('Giới hạn cân nặng của từng phương thức là bao nhiêu?', 'Giới hạn thay đổi theo thời gian và theo phương thức. Hãy xem bảng quy định hiện hành trong Kênh Người Bán hoặc Seller Education Hub.'),
+        ],
+        'related': ['dong-goi-va-giao-hang-cho-don-vi-van-chuyen-shopee', 'cach-tinh-gia-ban-va-loi-nhuan-shopee', 'van-hanh-shop-shopee-dip-cao-diem-tet'],
+    },
+    {
+        'slug': 'van-hanh-shop-shopee-dip-cao-diem-tet',
+        'title': 'Vận hành shop Shopee dịp cao điểm và Tết: checklist cần có',
+        'h1': 'Vận hành shop Shopee dịp cao điểm và Tết: checklist để không bị quá tải',
+        'description': 'Checklist vận hành shop Shopee dịp cao điểm và Tết: dự báo tồn kho, nhân sự, đóng gói, vận chuyển trễ, chăm sóc khách và giữ điểm shop ổn định.',
+        'keywords': 'vận hành shop shopee dịp tết, bán hàng shopee cao điểm, chuẩn bị hàng tết shopee, xử lý đơn mùa cao điểm',
+        'category': 'Vận hành',
+        'minutes': 5,
+        'published': '2026-11-07',
+        'summary': 'Chuẩn bị hàng, nhân sự, vận chuyển và chăm sóc khách trước mùa cao điểm để tận dụng nhu cầu mua sắm mà không bị trễ đơn.',
+        'body': '''
+<p>Cận Tết và các đợt khuyến mãi lớn là lúc đơn tăng mạnh nhưng cũng là lúc vận chuyển chậm hơn và sai sót nhiều hơn. Shop chuẩn bị tốt sẽ lấy được doanh thu, shop chuẩn bị kém sẽ bị trễ đơn và đánh giá thấp.</p>
+
+<h2 id="du-bao-ton-kho">1. Dự báo và chuẩn bị tồn kho</h2>
+<ul>
+<li>Xem số đơn cùng kỳ năm trước và tốc độ tăng của vài tuần gần đây để ước lượng nhu cầu.</li>
+<li>Nhập đủ cho nhóm hàng chủ lực, thận trọng với hàng thử nghiệm.</li>
+<li>Cập nhật tồn kho thường xuyên để tránh bán quá số lượng có thật.</li>
+<li>Biết trước hạn nhà cung cấp nghỉ lễ để nhập sớm.</li>
+</ul>
+
+<h2 id="nhan-su">2. Sắp xếp nhân sự và lịch làm việc</h2>
+<p>Lên lịch người xử lý đơn cả cuối tuần ở những ngày cao điểm và nhớ lịch nghỉ Tết của kho, đơn vị vận chuyển. Khi có thông báo chậm nhận hàng, hãy tranh thủ xử lý để giảm đơn tồn đọng, đừng để dồn sang các ngày cuối.</p>
+
+<h2 id="dong-goi-san">3. Chuẩn bị vật liệu và đóng gói sẵn</h2>
+<p>Mua dự trữ hộp, băng keo, túi chống sốc. Hàng bán chạy có thể đóng gói sẵn theo bộ để rút ngắn thời gian. Xem lại bài <a href="/blog/dong-goi-va-giao-hang-cho-don-vi-van-chuyen-shopee">đóng gói và giao cho đơn vị vận chuyển</a> để tổ chức kho gọn.</p>
+
+<h2 id="van-chuyen-cham">4. Làm gì khi vận chuyển chậm</h2>
+<ol>
+<li>Ghi nhận các đơn chậm lấy hoặc chậm giao và lưu bằng chứng.</li>
+<li>Xem thông báo của Shopee: trong những giai đoạn cao điểm, Shopee có thể điều chỉnh cách tính chỉ số hoặc gia hạn xử lý đơn. Nội dung cụ thể thay đổi theo từng năm nên hãy đọc thông báo mới nhất.</li>
+<li>Chủ động nhắn khách về thời gian giao dự kiến để giảm hủy đơn.</li>
+<li>Với đơn thất lạc hoặc hư hỏng, làm theo chính sách đền bù hiện hành.</li>
+</ol>
+
+<h2 id="cham-soc-khach-cao-diem">5. Chăm sóc khách trong mùa cao điểm</h2>
+<ul>
+<li>Soạn sẵn tin nhắn trả lời nhanh cho các câu hỏi lặp lại: phí ship, thời gian giao, đổi trả.</li>
+<li>Ghi rõ trong mô tả lịch nghỉ Tết và thời gian chuẩn bị hàng thực tế.</li>
+<li>Trả lời tin nhắn nhanh và xử lý đánh giá thấp có lịch sự.</li>
+</ul>
+
+<h2 id="khuyen-mai-cao-diem">6. Khuyến mãi có tính toán</h2>
+<p>Mùa cao điểm dễ khiến shop giảm giá quá tay. Trước khi tham gia chương trình, hãy tính lại giá hòa vốn và lãi tối thiểu như trong bài <a href="/blog/cach-tinh-gia-ban-va-loi-nhuan-shopee">cách tính giá bán và lợi nhuận</a>, và chỉ tham gia khi vẫn có lãi.</p>
+''',
+        'faq': [
+            ('Nên chuẩn bị hàng cho Tết từ khi nào?', 'Sớm nhất có thể, vì nhà cung cấp và đơn vị vận chuyển thường nghỉ hoặc chậm trước Tết. Xem số đơn cùng kỳ năm trước để ước lượng.'),
+            ('Đơn bị chậm do vận chuyển có ảnh hưởng điểm shop không?', 'Shopee có thể điều chỉnh cách tính cho đơn chậm không do lỗi người bán, nhưng chính sách thay đổi theo từng thời điểm. Hãy đọc thông báo mới nhất và lưu bằng chứng để khiếu nại khi cần.'),
+            ('Có nên giảm giá mạnh dịp Tết không?', 'Chỉ khi giá sau giảm vẫn trên giá hòa vốn và bạn có đủ hàng. Giảm quá tay dễ dẫn đến bán nhiều nhưng không có lãi.'),
+        ],
+        'related': ['dong-goi-va-giao-hang-cho-don-vi-van-chuyen-shopee', 'phuong-thuc-van-chuyen-shopee-nguoi-ban-can-biet', 'cach-tinh-gia-ban-va-loi-nhuan-shopee'],
     },
 ]
