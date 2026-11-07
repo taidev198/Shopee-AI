@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {randomUUID} from 'node:crypto';
-import {inspectSearchPage, inspectProductSeller, inspectShopProfile, validateDiscoveryQuery, validateSellerLink} from '../discovery.js';
+import {inspectSearchPage, inspectSearchResults, inspectProductSeller, inspectShopProfile, validateDiscoveryQuery, validateSellerLink} from '../discovery.js';
 
 class Element {
   constructor(tag, attrs = {}, children = []) {
@@ -213,4 +213,29 @@ test('discovery traverses bounded distinct sellers, excludes own shop and closes
     assert.equal(tabs.has(503), true);
     assert.ok(injected.every(name => ['inspectSearchPage', 'inspectProductSeller'].includes(name)));
   } finally { globalThis.chrome = previous; }
+});
+
+test('search results read price and sold counter from displayed cards only', () => {
+  const card = (seller, id, name, ...text) => el('div', {class: 'shopee-search-item-result__item'},
+    el('div', {role: 'group', 'aria-label': `Product card: ${name}`},
+      el('a', {href: `/product/${seller}/${id}`, display: 'contents'}, el('h3', {}, name), ...text)));
+  const body = el('body', {}, el('section', {class: 'shopee-search-item-result'},
+    card(1, 11, 'Rây lọc inox 304', '₫94.000', 'Đã bán 1,2k'),
+    card(2, 22, 'Rây lọc nhựa', '₫50.000 - ₫80.000', 'Đã bán 5k+'),
+    card(3, 33, 'Rây lọc mini', '12.500₫', 'Đã bán 1.234'),
+    card(4, 44, 'Rây không giá'),
+    el('aside', {}, card(5, 55, 'Gợi ý'))));
+  withDOM(body, searchUrl, () => {
+    const result = inspectSearchResults({query, action: 'read', limit: 10});
+    assert.equal(result.status, 'ready');
+    const by = Object.fromEntries(result.cards.map(item => [item.product_id, item]));
+    assert.deepEqual([by[11].price, by[11].sold_total, by[11].sold_lower_bound], [94000, 1200, false]);
+    assert.deepEqual([by[22].price, by[22].sold_total, by[22].sold_lower_bound], [50000, 5000, true]);
+    assert.deepEqual([by[33].price, by[33].sold_total], [12500, 1234]);
+    assert.deepEqual([by[44].price, by[44].sold_total], [null, null]);
+    assert.equal(result.cards.length, 4);
+    assert.equal(inspectSearchResults({query, limit: 2}).cards.length, 2);
+  });
+  withDOM(el('body', {}, el('p', {}, 'x')), 'https://shopee.vn/buyer/login', () => assert.equal(inspectSearchResults({query}).status, 'blocked'));
+  withDOM(el('body', {}, el('p', {}, 'x')), 'https://shopee.vn/search?keyword=giay', () => assert.equal(inspectSearchResults({query}).status, 'wrong_search'));
 });

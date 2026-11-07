@@ -2,7 +2,7 @@ import {validateCategoryUrl, inspectCategoryPage} from './category.js';
 import {inspectShopPage, isAllowedAppUrl, validateShopUrl} from './collector.js';
 import {inspectProductPage, validateProductUrl} from './product-detail.js';
 import {validateListingDraft, validateTarget, targetForUrl, TARGETS, IMAGE_URL, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, VIDEO_CHUNK_BYTES} from './listing.js';
-import {inspectSearchPage, inspectProductSeller, inspectShopProfile, validateDiscoveryQuery, validateSellerLink} from './discovery.js';
+import {inspectSearchPage, inspectSearchResults, inspectProductSeller, inspectShopProfile, validateDiscoveryQuery, validateSellerLink} from './discovery.js';
 
 const MAX_PAGES = 5;
 const MAX_PRODUCTS = 150;
@@ -408,6 +408,52 @@ async function discover(queryValue, ownShopValue, sender) {
   }
 }
 
+// Reads one Shopee keyword search so a product can be compared with the whole marketplace.
+// Only the rendered result cards (name, price, sold counter) are read; no product pages are opened.
+async function similar(queryValue, sender) {
+  const query = validateDiscoveryQuery(queryValue);
+  const release = beginCollection(false);
+  let tabId;
+  let keepForVerification = false;
+  const deadline = Date.now() + 70000;
+  try {
+    const tab = await editChromeTab(() => openWorkTab(`https://shopee.vn/search?keyword=${encodeURIComponent(query)}`, sender), deadline);
+    tabId = tab.id;
+    let best = [];
+    let stable = 0;
+    let scrolls = 0;
+    while (Date.now() < deadline && stable < 3) {
+      const current = await chrome.tabs.get(tabId);
+      const currentUrl = current.url || current.pendingUrl;
+      if (currentUrl && !/^https:\/\/(?:www\.)?shopee\.vn\//i.test(currentUrl)) {
+        throw Object.assign(new Error('Tab tìm sản phẩm tương tự đã rời Shopee; đã dừng.'), {blocked: true});
+      }
+      if (isVerificationRoute(currentUrl)) {
+        keepForVerification = true;
+        throw manualVerificationError('Shopee yêu cầu xác minh hoặc đăng nhập.', tabId, currentUrl);
+      }
+      if (current.status === 'complete') {
+        let snapshot;
+        try { snapshot = (await chrome.scripting.executeScript({target: {tabId}, func: inspectSearchResults, args: [{query, limit: 24, action: scrolls++ < 3 ? 'scroll' : 'read'}]}))[0]?.result; }
+        catch (error) { if (!/(?:frame.*removed|context.*invalidated|document.*unloaded|frame.*navigat)/i.test(error.message)) throw error; }
+        if (snapshot?.status === 'blocked') {
+          const error = manualVerificationError(snapshot.error || 'Shopee yêu cầu xác minh.', tabId, currentUrl);
+          keepForVerification = error.verificationRequired === true;
+          throw error;
+        }
+        if (snapshot?.status === 'ready') {
+          if (snapshot.cards.length > best.length) { best = snapshot.cards; stable = 0; } else stable++;
+        }
+      }
+      await pause(900);
+    }
+    if (!best.length) throw new Error('Shopee chưa hiển thị kết quả sản phẩm cho từ khóa này.');
+    return {query, cards: best};
+  } finally {
+    try { await closeOwnedTab(tabId, keepForVerification); } finally { release(); }
+  }
+}
+
 async function collectCategory(url, sender, home = false) {
   const target = home ? 'https://shopee.vn/' : validateCategoryUrl(url);
   const release = beginCollection(!home);
@@ -508,12 +554,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.source === 'marketlens-seller') return handleSellerMessage(message, sender, sendResponse);
   if (sender.id !== chrome.runtime.id || sender.frameId !== 0 ||
       !isAllowedAppUrl(sender.url) || message?.source !== 'marketlens-bridge') return false;
-  if (!['ping', 'collect', 'detail', 'discover', 'categories', 'category', 'listing'].includes(message.action) || typeof message.requestId !== 'string' || message.requestId.length > 128) {
+  if (!['ping', 'collect', 'detail', 'discover', 'similar', 'categories', 'category', 'listing'].includes(message.action) || typeof message.requestId !== 'string' || message.requestId.length > 128) {
     sendResponse({ok: false, error: 'Yêu cầu tiện ích không hợp lệ.'});
     return false;
   }
   if (message.action === 'ping') {
-    sendResponse({ok: true, result: {version: chrome.runtime.getManifest().version, maxPages: MAX_PAGES, maxProducts: MAX_PRODUCTS, details: true, capabilities: {discover: true, categories: true, categoryCatalog: true, verificationPause: true, tabEditRetry: true, categoryCardsV2: true, categoryParallel: MAX_PARALLEL_CATEGORY, backgroundTabs: true, hiddenWindow: true}, mode: 'chrome_dom'}});
+    sendResponse({ok: true, result: {version: chrome.runtime.getManifest().version, maxPages: MAX_PAGES, maxProducts: MAX_PRODUCTS, details: true, capabilities: {discover: true, similar: true, categories: true, categoryCatalog: true, verificationPause: true, tabEditRetry: true, categoryCardsV2: true, categoryParallel: MAX_PARALLEL_CATEGORY, backgroundTabs: true, hiddenWindow: true}, mode: 'chrome_dom'}});
     return false;
   }
   if (message.action === 'listing') {
@@ -521,7 +567,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       error => sendResponse({ok: false, error: error.message || String(error)}));
     return true;
   }
-  const task = ['categories', 'category'].includes(message.action) ? collectCategory(message.url, sender, message.action === 'categories') : message.action === 'discover' ? discover(message.query, message.ownShopUrl, sender) :
+  const task = ['categories', 'category'].includes(message.action) ? collectCategory(message.url, sender, message.action === 'categories') : message.action === 'discover' ? discover(message.query, message.ownShopUrl, sender) : message.action === 'similar' ? similar(message.query, sender) :
     (message.action === 'detail' ? collectDetail : collect)(message.url, sender);
   task.then(result => sendResponse({ok: true, result}),
     error => sendResponse({ok: false, error: error.message || String(error), blocked: error.blocked === true,

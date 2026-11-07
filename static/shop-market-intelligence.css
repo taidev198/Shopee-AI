@@ -32,3 +32,9 @@
 .sp-error{color:#b91c1c;font-size:13px}
 .sp-empty p{font-size:13px;opacity:.85}
 @media(max-width:620px){.sp-stats{grid-template-columns:1fr}}
+.sp-market,.sp-stored{margin-top:14px}
+.sp-market h4,.sp-stored h4{font-size:14px;margin:0 0 8px}
+.sp-search{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin:0 0 10px}
+.sp-search label{flex:1 1 220px;font-size:11px;font-weight:700;display:block}
+.sp-search input{display:block;width:100%;margin-top:4px;padding:8px 10px;border-radius:8px;border:1px solid rgba(128,128,160,.4);font-size:13px}
+.sp-name{display:block;font-size:12px;line-height:1.5}

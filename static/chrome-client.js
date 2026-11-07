@@ -49,6 +49,7 @@
     collect: url => request('collect', {url}, 240000),
     detail: url => request('detail', {url}, 120000),
     listing: (draft, target) => request('listing', {draft, target}, 30000),
+    similar: query => request('similar', {query}, 90000),
     discover: (query, ownShopUrl) => request('discover', {query, ownShopUrl}, 150000),
   });
 })();

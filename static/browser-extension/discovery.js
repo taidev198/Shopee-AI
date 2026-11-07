@@ -185,3 +185,89 @@ export function inspectShopProfile(options) {
     .filter(visible).map(element => String(element.innerText || '').replace(/\s+/g, ' ').trim()).find(Boolean) || username;
   return {status: 'ready', shop_url: `https://shopee.vn/${username}`, name: name.slice(0, 120)};
 }
+
+// Reads the displayed result cards of one Shopee keyword search with the public
+// price and sold counter, so a product can be compared against the whole
+// marketplace. Rendered DOM only; no private endpoints, cookies or network logs.
+export function inspectSearchResults(options) {
+  const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const visible = element => {
+    if (!element || element.hidden || element.closest('[hidden], [aria-hidden="true"]')) return false;
+    const style = getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    return style.display === 'contents' ? [...element.children].some(visible) : element.getClientRects().length > 0;
+  };
+  const current = new URL(location.href);
+  const fail = (status, error) => ({status, error, cards: []});
+  if (current.protocol !== 'https:' || !['shopee.vn', 'www.shopee.vn'].includes(current.hostname) || current.port || current.username || current.password) {
+    return fail('blocked', 'Tab tìm sản phẩm tương tự đã rời Shopee.');
+  }
+  const bodyText = clean(document.body?.innerText).slice(0, 12000);
+  if (/\/(?:verify|captcha)(?:\/|$)/i.test(current.pathname) ||
+      /(?:unusual traffic|verify you are human|xác minh bạn là con người|lưu lượng truy cập bất thường)/i.test(bodyText) ||
+      [...document.querySelectorAll('iframe[src*="captcha" i], [id*="captcha" i], [class*="captcha-container" i]')].some(visible)) {
+    return fail('blocked', 'Shopee yêu cầu xác minh hoặc chặn lưu lượng. Đã dừng tìm sản phẩm tương tự.');
+  }
+  if (/\/(?:buyer\/)?login(?:\/|$)/i.test(current.pathname) || [...document.querySelectorAll('input[type="password"]')].some(visible)) {
+    return fail('blocked', 'Shopee yêu cầu đăng nhập. Hãy đăng nhập trong Chrome rồi tìm lại.');
+  }
+  if (current.pathname.replace(/\/+$/, '') !== '/search' ||
+      clean(current.searchParams.get('keyword')).toLowerCase() !== clean(options.query).toLowerCase()) {
+    return fail('wrong_search', 'Shopee chưa mở đúng từ khóa tìm kiếm.');
+  }
+  const parse = value => {
+    try {
+      const url = new URL(value, current.href);
+      if (url.protocol !== 'https:' || !['shopee.vn', 'www.shopee.vn'].includes(url.hostname) || url.port || url.username || url.password) return null;
+      const ids = url.pathname.match(/^\/product\/([1-9]\d*)\/([1-9]\d*)\/?$/)?.slice(1) ||
+        url.pathname.match(/^\/[^/]+-i\.([1-9]\d*)\.([1-9]\d*)\/?$/)?.slice(1);
+      return ids ? {url: `https://shopee.vn/product/${ids[0]}/${ids[1]}`, seller_id: ids[0], product_id: ids[1]} : null;
+    } catch { return null; }
+  };
+  const useful = value => {
+    const result = clean(value).replace(/^Product card\s*:?\s*/i, '');
+    return result.length > 1 && /\p{L}/u.test(result) && !/^(?:shopee|logo|avatar|voucher|icon)\b/i.test(result) ? result.slice(0, 300) : '';
+  };
+  const amount = (digits, unit) => {
+    if (!digits) return null;
+    const multiplier = {k: 1e3, tr: 1e6, m: 1e6}[String(unit || '').toLowerCase()];
+    const number = multiplier ? parseFloat(digits.replace(',', '.')) * multiplier : Number(digits.replace(/[.,]/g, ''));
+    return Number.isFinite(number) && number >= 0 ? Math.round(number) : null;
+  };
+  const priceOf = (text, name) => {
+    // Per line, skipping the title: a title ending in a number must not merge with the price line below it.
+    const lines = text.split('\n').map(clean).filter(line => line && line !== name && !line.includes(name));
+    const prices = lines.flatMap(line => [...line.matchAll(/(?:₫\s*(\d{1,3}(?:\.\d{3})+|\d+)|(\d{1,3}(?:\.\d{3})+|\d+)\s*₫)/g)]
+      .map(match => Number((match[1] || match[2]).replace(/\./g, '')))).filter(value => value > 0);
+    return prices.length ? Math.min(...prices) : null;
+  };
+  const soldOf = text => {
+    const match = text.match(/đã bán\s*([\d.,]+)\s*(k|tr|m)?\s*(\+)?/i) || text.match(/([\d.,]+)\s*(k|tr|m)?\s*(\+)?\s*đã bán/i);
+    return match ? {sold_total: amount(match[1], match[2]), sold_text: clean(match[0]), sold_lower_bound: !!match[3]} : {sold_total: null, sold_text: '', sold_lower_bound: false};
+  };
+  const selector = '.shopee-search-item-result__items, .shopee-search-item-result, [data-sqe="search-results"], [data-sqe="search-result"]';
+  const roots = [...document.querySelectorAll(selector)].filter(visible);
+  if (!roots.length) return {status: 'loading', query: options.query, cards: []};
+  const limit = Math.max(1, Math.min(40, Number(options.limit) || 24));
+  const cards = [];
+  const seen = new Set();
+  for (const root of roots) for (const link of root.querySelectorAll('a[href]')) {
+    const product = parse(link.getAttribute('href'));
+    if (!product || !visible(link) || seen.has(product.url) ||
+        link.closest('[class*="recommend" i], [data-sqe="recommendation"], aside, header, footer, nav')) continue;
+    const card = link.closest('[role="group"][aria-label^="Product card:"], [data-sqe="item"], .shopee-search-item-result__item') || link;
+    const text = String(card.innerText || '');
+    if (/^(?:Ad|Ads|Quảng cáo)\s*$/i.test(text.split('\n').map(clean).find(Boolean) || '')) continue;
+    let name = useful(card.getAttribute('aria-label')) || useful(link.getAttribute('aria-label')) || useful(link.getAttribute('title'));
+    if (!name) for (const image of card.querySelectorAll('img[alt]')) { name = useful(image.getAttribute('alt')); if (name) break; }
+    if (!name) for (const title of card.querySelectorAll('[data-sqe="name"], h2, h3, [class*="line-clamp"], [title]')) {
+      name = useful(title.getAttribute('title') || title.innerText); if (name) break;
+    }
+    if (!name || !clean(text)) continue;
+    seen.add(product.url);
+    cards.push({...product, name, price: priceOf(text, name), ...soldOf(text)});
+    if (cards.length >= limit) break;
+  }
+  if (options.action === 'scroll') window.scrollBy({top: Math.max(900, window.innerHeight * 1.2), behavior: 'instant'});
+  return {status: cards.length ? 'ready' : 'loading', query: options.query, cards};
+}
