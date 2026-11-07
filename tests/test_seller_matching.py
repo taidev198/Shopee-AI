@@ -121,3 +121,14 @@ def test_matching_does_not_modify_recorded_product_data():
     previous = copy.deepcopy((own, rows))
     competitor_reference(own, rows)
     assert (own, rows) == previous
+
+
+def test_candidates_are_ordered_by_title_similarity_within_equal_equivalence():
+    from seller_matching import title_similarity
+    own = product(name='Hộp đựng thực phẩm nhựa PP 500ml')
+    near = product('98.1', name='Hộp đựng thực phẩm nhựa 500ml', attributes={'Chất liệu': 'Thủy tinh'})
+    far = product('98.2', name='Giá đỡ điện thoại để bàn', attributes={'Chất liệu': 'Thủy tinh'})
+    result = competitor_reference(own, [far, near])
+    assert [row['sku'] for row in result['candidates']] == ['98.1', '98.2']
+    assert result['candidates'][0]['similarity'] > result['candidates'][1]['similarity']
+    assert title_similarity(own, {}) == 0.0

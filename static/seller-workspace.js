@@ -529,7 +529,7 @@
     if(d.sellerOptimize)return openProduct(d.sellerOptimize,'optimizer');
     if(d.sellerStrategy)return openProduct(d.sellerStrategy,'strategy');
     if(d.sellerTask)return openProduct(d.sellerTask,'actions');
-    if(d.sellerDetail){const product=list(S.data?.own_products).find(item=>String(item.sku)===d.sellerDetail)||list(entry.data?.products).find(item=>String(item.sku)===d.sellerDetail);if(product)showProductDetail(product);return;}
+    if(d.sellerDetail){const product=list(S.data?.own_products).find(item=>String(item.sku)===d.sellerDetail)||list(entry.data?.products).find(item=>String(item.sku)===d.sellerDetail);if(product)showProductDetail({role:'own',...product});return;}
     if('sellerClear'in d){entry.sku='';redraw(currentId());return;}
     if('sellerRefresh'in d)return refresh();
     if('sellerAiConfigRefresh'in d)return refreshAiConfig();

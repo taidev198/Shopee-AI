@@ -76,8 +76,19 @@ def compare_equivalence(own, other):
             'reason': 'Không dùng tên giống nhau làm bằng chứng tương đương; chỉ so giá trực tiếp khi thông số đã ghi nhận khớp.'}
 
 
+def name_tokens(product):
+    return {token for token in re.findall(r'[a-z0-9]{3,}', normalized(product.get('name')))}
+
+
+def title_similarity(own, other):
+    """0..1 cosine overlap of title words. Orders discovery only; never proves equivalence."""
+    left, right = name_tokens(own), name_tokens(other)
+    return round(len(left & right) / math.sqrt(len(left) * len(right)), 3) if left and right else 0.0
+
+
 def competitor_reference(own, candidates):
     comparisons = [{**{key: item.get(key) for key in ('sku', 'name', 'source_shop', 'price', 'product_url', 'category')},
+                    'similarity': title_similarity(own, item),
                     'equivalence': compare_equivalence(own, item)} for item in candidates
                    if normalized(own.get('category')) == normalized(item.get('category'))]
     matched = [item for item in comparisons if item['equivalence']['comparable']]
@@ -86,6 +97,6 @@ def competitor_reference(own, candidates):
     return {'count': len(matched), 'min': min(prices) if prices else None, 'max': max(prices) if prices else None,
             'review_count': sum(item['equivalence']['status'] == 'review' for item in comparisons),
             'different_count': sum(item['equivalence']['status'] == 'different' for item in comparisons),
-            'candidates': sorted(comparisons, key=lambda item: not item['equivalence']['comparable'])[:20],
+            'candidates': sorted(comparisons, key=lambda item: (not item['equivalence']['comparable'], -item['similarity']))[:20],
             'candidate_count': len(comparisons), 'candidates_truncated': len(comparisons) > 20,
             'basis': 'Chỉ các thông số đã ghi nhận khớp; giá cộng dồn toàn ngành không được dùng làm giá đối thủ tương đương.'}
