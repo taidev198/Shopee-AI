@@ -296,3 +296,17 @@ Mỗi bản nháp có thêm nút **Đăng TikTok Shop (tiện ích)** và file M
 ## Thu thập theo ngành hàng lưu đầy đủ (cập nhật)
 
 Khi tạo lượt quét ngành hàng (hoặc lịch) trong lúc đang chọn một shop của bạn, mỗi sản phẩm đọc được được lưu đầy đủ vào thư viện sản phẩm của shop đó, giống thu thập shop: giá hoặc khoảng giá, đã bán, đánh giá, tồn kho, mô tả, ảnh, ảnh mô tả, video, thuộc tính, phân loại và ngành hàng. Sản phẩm xuất hiện trong **Sao chép sản phẩm** với nguồn `Ngành: <tên ngành>` để tạo bản nháp. Số liệu theo ngày vẫn nằm ở bảng snapshot dùng cho xu hướng. Lượt quét tạo khi chưa chọn shop riêng chỉ lưu snapshot như trước.
+
+## Chính sách quyền riêng tư & Điều khoản dịch vụ
+
+Hai trang công khai (không cần đăng nhập), song ngữ Việt/Anh, dùng làm URL khi đăng ký ứng dụng với TikTok Shop / Shopee Open Platform:
+
+- `/privacy` — Chính sách quyền riêng tư
+- `/terms` — Điều khoản dịch vụ
+
+Đặt hai biến môi trường (Render → Environment) để điền đơn vị vận hành và email liên hệ; nếu chưa đặt, trang hiển thị dòng nhắc điền:
+
+- `LEGAL_OPERATOR_NAME` — tên cá nhân/doanh nghiệp vận hành
+- `LEGAL_CONTACT_EMAIL` — email nhận yêu cầu về dữ liệu và điều khoản
+
+Nội dung mô tả đúng hiện trạng ứng dụng (tài khoản băm PBKDF2, Neon/Render, Ollama, tiện ích Chrome chỉ đọc khi bạn bấm); hãy nhờ chuyên gia pháp lý rà soát trước khi dùng cho mục đích thương mại.

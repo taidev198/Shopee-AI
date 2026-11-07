@@ -371,6 +371,26 @@ from ui_roles import install as install_ui_roles
 install_ui_roles(app, ROOT)
 
 
+def _legal_page(name):
+    """Public Privacy Policy / Terms pages; operator name and contact come from the environment."""
+    import html as _html
+    operator = os.environ.get('LEGAL_OPERATOR_NAME', '').strip() or '[điền tên đơn vị vận hành — đặt biến LEGAL_OPERATOR_NAME]'
+    contact = os.environ.get('LEGAL_CONTACT_EMAIL', '').strip() or '[điền email liên hệ — đặt biến LEGAL_CONTACT_EMAIL]'
+    text = (ROOT / 'static' / f'{name}.html').read_text(encoding='utf-8')
+    text = text.replace('{{OPERATOR_NAME}}', _html.escape(operator)).replace('{{CONTACT_EMAIL}}', _html.escape(contact))
+    return Response(text, media_type='text/html; charset=utf-8', headers={'Cache-Control': 'public, max-age=300'})
+
+
+@app.get('/privacy', include_in_schema=False)
+def privacy_policy():
+    return _legal_page('privacy')
+
+
+@app.get('/terms', include_in_schema=False)
+def terms_of_service():
+    return _legal_page('terms')
+
+
 @app.get('/api/health')
 def health():
     return {'ok':True,'mode':'public_browser_crawler','version':'0.2.0','crawler_enabled':crawler_enabled()}
