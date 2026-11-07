@@ -17,7 +17,7 @@ function runtime({hold=id=>true,urlForTab=(id,url)=>url,createError,removeError,
       async create(options){creates.push(options);const id=++sequence;const error=createError?.(id,options);if(error)throw error;
         tabs.set(id,urlForTab(id,options.url));return {id};},
       async get(id){assert.ok(tabs.has(id));return {id,status:statusForTab(id,clock),url:tabs.get(id)};},
-      async update(id,options){assert.ok(tabs.has(id));tabs.set(id,options.url);return {id};},
+      async update(id,options){assert.ok(tabs.has(id));if(options.url)tabs.set(id,options.url);return {id};},
       async remove(id){removes.push(id);const error=removeError?.(id);if(error)throw error;tabs.delete(id);},
     },
     scripting:{async executeScript({target,func,args}){

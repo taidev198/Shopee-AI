@@ -145,5 +145,5 @@ test('discovery requires the actual installed capability before opening or scann
  context.window.MarketLensChrome={ping:async()=>({version:'1.2.0'}),discover:async()=>{calls++;return {candidates:[]}}};
  await vm.runInContext('discoverCompetitors()',context);
  assert.equal(calls,0);assert.equal(submissions.length,0);
- assert.match(vm.runInContext('S.competitor.discoveryError',context),/tiện ích MarketLens 1.2.0/);
+ assert.match(vm.runInContext('S.competitor.discoveryError',context),/tiện ích MarketLens 1.7.0/);
 });

@@ -160,7 +160,7 @@ test('discovery traverses bounded distinct sellers, excludes own shop and closes
     tabs: {
       async create({url}) { const id = ++created; tabs.set(id, url); return {id}; },
       async get(id) { return {id, status: 'complete', url: tabs.get(id)}; },
-      async update(id, {url}) { updates.push(url); tabs.set(id, url); return {id}; },
+      async update(id, {url}) { if (!url) return {id}; updates.push(url); tabs.set(id, url); return {id}; },
       async remove(id) { removed.push(id); tabs.delete(id); },
     },
     scripting: {async executeScript({target, func}) {

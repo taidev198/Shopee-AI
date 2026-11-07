@@ -141,7 +141,7 @@ async function discoverCompetitors(customQuery){
  try{
    const bridge=await window.MarketLensChrome.ping();
    const version=String(bridge.version||'').split('.').map(Number);
-   if(typeof window.MarketLensChrome.discover!=='function'||bridge.capabilities?.discover!==true||!(version[0]>1||version[0]===1&&version[1]>=2))throw new Error('Tự tìm đối thủ cần tiện ích MarketLens 1.2.0. Hãy tải lại tiện ích từ thư mục browser-extension mới rồi tải lại trang ứng dụng.');
+   if(typeof window.MarketLensChrome.discover!=='function'||bridge.capabilities?.discover!==true||!(version[0]>1||version[0]===1&&version[1]>=2))throw new Error('Tự tìm đối thủ cần tiện ích MarketLens 1.7.0 trở lên (chạy nền, không mở tab mới). Hãy tải lại tiện ích từ thư mục browser-extension mới rồi tải lại trang ứng dụng.');
    const candidates=[],errors=[];
    for(let index=0;index<queries.length;index++){
      if(S.shopId!==shopId||S.competitor!==state)break;
@@ -155,8 +155,8 @@ async function discoverCompetitors(customQuery){
      }catch(error){errors.push(error.message);if(error.blocked||['blocked','bridge_timeout','bridge_unavailable'].includes(error.code)){state.discoveryBlocked=true;break}}
    }
    state.discoveryError=errors.join(' ').slice(0,1200);
-   state.discoveryStatus=state.candidates.length?`Đã tìm ${num(state.candidates.length)} shop có sản phẩm liên quan.${state.discoveryBlocked?' Shopee yêu cầu xác minh; đã dừng và giữ kết quả tìm được.':(typed?' Chọn shop bên dưới để quét & so sánh.':' Đang bắt đầu quét shop đầu tiên để so sánh.')}`:'Chưa tìm được shop phù hợp từ kết quả đang hiển thị. Hãy thử lại sau hoặc nhập một shop bạn biết.';
-   if(state.candidates.length&&!state.discoveryBlocked&&!typed)autoScanUrl=state.candidates[0].url;
+   state.discoveryStatus=state.candidates.length?`Đã tìm ${num(state.candidates.length)} shop có sản phẩm liên quan.${state.discoveryBlocked?' Shopee yêu cầu xác minh; đã dừng và giữ kết quả tìm được.':' Đang bắt đầu quét shop đầu tiên để so sánh.'}`:'Chưa tìm được shop phù hợp từ kết quả đang hiển thị. Hãy thử lại sau hoặc nhập một shop bạn biết.';
+   if(state.candidates.length&&!state.discoveryBlocked)autoScanUrl=state.candidates[0].url;
  }catch(error){state.discoveryError=error.message;state.discoveryStatus='Không tìm được đối thủ.'}
  finally{state.discovering=false;if(S.shopId===shopId&&S.competitor===state)render()}
  if(autoScanUrl&&S.shopId===shopId&&S.competitor===state){state.readDetails=true;state.detailLimit=20;startCompetitorScan(autoScanUrl)}
@@ -197,7 +197,7 @@ async function compareTopProducts(ownSku){
  try{
    tell('Đang tìm đối thủ cho từng sản phẩm bán tốt...');render();
    const bridge=await window.MarketLensChrome.ping(),version=String(bridge.version||'').split('.').map(Number);
-   if(typeof window.MarketLensChrome.discover!=='function'||bridge.capabilities?.discover!==true||!(version[0]>1||version[0]===1&&version[1]>=2))throw new Error('Tìm đối thủ theo sản phẩm cần tiện ích MarketLens 1.2.0. Hãy tải lại tiện ích và trang ứng dụng.');
+   if(typeof window.MarketLensChrome.discover!=='function'||bridge.capabilities?.discover!==true||!(version[0]>1||version[0]===1&&version[1]>=2))throw new Error('Tìm đối thủ theo sản phẩm cần tiện ích MarketLens 1.7.0 trở lên (chạy nền, không mở tab mới). Hãy tải lại tiện ích và trang ứng dụng.');
    for(let index=0;index<comparisons.length;index++){
      if(!current()||run.stopRequested)break;
      const comparison=comparisons[index];

@@ -18,7 +18,7 @@ function runtime({createError,updateError,removeError,verification=true,inspect}
       async create(options){creates.push(options);const error=createError?.(creates.length);if(error)throw error;
         created=true;currentUrl=verification?'https://shopee.vn/verify/captcha?tracking_id=private':options.url;return {id:81};},
       async get(id){assert.equal(id,81);assert.equal(created,true);return {id,status:'complete',url:currentUrl};},
-      async update(id,options){updates.push({id,...options});const error=updateError?.(updates.length);if(error)throw error;
+      async update(id,options){if(!options.url)return {id,windowId:7};updates.push({id,...options});const error=updateError?.(updates.length);if(error)throw error;
         assert.equal(id,81);currentUrl=options.url;return {id,url:currentUrl};},
       async remove(id){removes.push(id);const error=removeError?.(removes.length);if(error)throw error;created=false;},
     },
