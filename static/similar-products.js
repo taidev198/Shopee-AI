@@ -20,37 +20,35 @@
     return `<small class="${pct<0?'sp-cheaper':'sp-pricier'}">${pct<0?'Rẻ hơn':'Đắt hơn'} bạn ${count(Math.round(Math.abs(pct)))}%</small>`;
   }
 
-  function verdict(own,reference,candidates) {
-    const price=known(own.price);
-    const matched=candidates.filter(item=>item.equivalence?.status==='equivalent');
-    const pool=matched.length?matched:candidates;
-    const mid=median(pool.map(item=>item.price));
-    if(price==null||mid==null)return '';
-    const pct=(price-mid)/mid*100,basis=matched.length?`${count(matched.length)} sản phẩm khớp quy cách`:`${count(candidates.length)} sản phẩm cùng ngành (chưa xác minh quy cách)`;
-    const word=Math.abs(pct)<3?'ngang mức thị trường':pct>0?`cao hơn trung vị ${count(Math.round(pct))}%`:`thấp hơn trung vị ${count(Math.round(-pct))}%`;
-    return `<p class="sp-verdict">Giá của bạn <strong>${money(price)}</strong> ${word} (<strong>${money(mid)}</strong>, tính trên ${basis}).</p>`;
+  function priceText(item) {
+    const low=item.price_min,high=item.price_max;
+    return known(low)!=null&&known(high)!=null&&low!==high?money(low)+' – '+money(high):money(known(item.price)??low);
   }
 
-  function table(own,candidates) {
-    const rows=candidates.slice(0,10).map(item=>{
+  function table(own,matches) {
+    const rows=matches.map(item=>{
       const [label,tone]=labels[item.equivalence?.status]||labels.review,url=safeUrl(item.product_url);
-      const similarity=known(item.similarity)==null?'':`<small>Tên giống ${count(Math.round(item.similarity*100))}%</small>`;
-      return `<tr><td><strong>${escape(item.source_shop||'Chưa rõ shop')}</strong><span>${escape(item.name||item.sku||'')}</span>${similarity}</td><td><span class="sp-badge ${tone}">${label}</span></td><td>${money(item.price)}${diff(item.price,own.price)}</td><td>${item.sold_lower_bound?'≥ ':item.sold_approx?'≈ ':''}${count(item.sold_total)}</td><td>${known(item.rating)==null?'—':'★ '+count(item.rating)}<small>${count(item.review_count)} đánh giá</small></td><td>${url?`<a href="${escape(url)}" target="_blank" rel="noopener noreferrer">Mở ↗</a>`:'—'}</td></tr>`;
+      const price=known(item.price)??known(item.price_min);
+      return `<tr><td><strong>${escape(item.source_shop||'Chưa rõ shop')}</strong><span>${escape(item.name||item.sku||'')}</span><small>${item.match_kind==='direct_search'?'Từ lượt tìm trực tiếp':'Tên giống '+count(Math.round(known(item.match_score)||0))+'%'}</small></td><td><span class="sp-badge ${tone}">${label}</span></td><td>${priceText(item)}${diff(price,own.price)}</td><td>${item.sold_lower_bound?'≥ ':''}${count(item.sold_total)}</td><td>${known(item.rating)==null?'—':'★ '+count(item.rating)}<small>${count(item.review_count)} đánh giá</small></td><td>${url?`<a href="${escape(url)}" target="_blank" rel="noopener noreferrer">Mở ↗</a>`:'—'}</td></tr>`;
     }).join('');
     const ownRow=`<tr class="sp-own"><td><strong>Sản phẩm của bạn</strong><span>${escape(own.name||own.sku||'')}</span></td><td><span class="sp-badge sp-self">Đang xem</span></td><td>${money(own.price)}</td><td>${count(own.sold_total)}</td><td>${known(own.rating)==null?'—':'★ '+count(own.rating)}<small>${count(own.review_count)} đánh giá</small></td><td>—</td></tr>`;
     return `<div class="sp-table-wrap"><table class="sp-table"><thead><tr><th>Shop / sản phẩm</th><th>Quy cách</th><th>Giá</th><th>Đã bán</th><th>Đánh giá</th><th>Nguồn</th></tr></thead><tbody>${ownRow}${rows}</tbody></table></div>`;
   }
 
+  // Only products whose title matches (same name search / name overlap) are shown; a bare
+  // same-category pool is not "similar" and is deliberately left out.
   function body(own,result) {
-    const reference=result.competitors||{},candidates=list(reference.candidates);
-    if(!candidates.length)return `<div class="sp-empty"><strong>Chưa có đối thủ cùng ngành trong dữ liệu đã lưu.</strong><p>Quét ngành hàng hoặc đọc đối thủ cho sản phẩm này để có giá, số bán và đánh giá thực tế. Không có dữ liệu không có nghĩa là thị trường không có đối thủ.</p><button class="btn btn-primary btn-sm" data-seller-competitors="${escape(own.sku)}">Tìm đối thủ cho sản phẩm này →</button></div>`;
-    const extra=reference.candidates_truncated?` · hiển thị ${count(Math.min(10,candidates.length))}/${count(reference.candidate_count)} gần nhất`:candidates.length>10?` · hiển thị 10/${count(candidates.length)} gần nhất`:'';
-    return `${verdict(own,reference,candidates)}<div class="sp-stats"><div><span>Cùng ngành</span><strong>${count(reference.candidate_count||candidates.length)}</strong></div><div><span>Khớp quy cách</span><strong>${count(reference.count)}</strong></div><div><span>Khoảng giá khớp</span><strong>${known(reference.min)==null?'—':money(reference.min)+(reference.min===reference.max?'':' – '+money(reference.max))}</strong></div></div>${table(own,candidates)}<p class="sp-foot">Xếp theo mức khớp quy cách rồi độ giống tên${escape(extra)}. Số đã bán là bộ đếm cộng dồn công khai, không phải số đơn 30 ngày. Chỉ so giá trực tiếp khi quy cách khớp.</p><button class="btn btn-soft btn-sm" data-seller-competitors="${escape(own.sku)}">Xem đầy đủ trong tab Đối thủ →</button>`;
+    const matches=list(result.name_matches);
+    if(!matches.length)return `<div class="sp-empty"><strong>Chưa có sản phẩm cùng tên trong dữ liệu đã lưu.</strong><p>Kết quả tìm trên toàn sàn ở trên chỉ để xem nhanh. Muốn lưu đối thủ cùng tên để theo dõi, bấm tìm và đọc chi tiết trong tab Đối thủ.</p><button class="btn btn-primary btn-sm" data-seller-competitors="${escape(own.sku)}">Tìm &amp; lưu đối thủ cùng tên →</button></div>`;
+    const prices=matches.map(item=>known(item.price)??known(item.price_min)).filter(value=>value!=null&&value>0),mid=median(prices),price=known(own.price);
+    const verdict=price!=null&&mid!=null?`<p class="sp-verdict">Giá của bạn <strong>${money(price)}</strong> ${Math.abs((price-mid)/mid)<.03?'ngang':price>mid?`cao hơn ${count(Math.round((price-mid)/mid*100))}% so với`:`thấp hơn ${count(Math.round((mid-price)/mid*100))}% so với`} trung vị <strong>${money(mid)}</strong> của ${count(prices.length)} sản phẩm cùng tên đã lưu.</p>`:'';
+    const total=known(result.name_match_count)||matches.length;
+    return `${verdict}${table(own,matches)}<p class="sp-foot">Sản phẩm cùng tên hoặc từ lượt tìm trực tiếp${total>matches.length?` · hiển thị ${count(matches.length)}/${count(total)}`:''}. Tên giống nhau chưa chứng minh cùng mẫu hoặc quy cách. Số đã bán là bộ đếm cộng dồn, không phải đơn 30 ngày.</p><button class="btn btn-soft btn-sm" data-seller-competitors="${escape(own.sku)}">Xem đầy đủ trong tab Đối thủ →</button>`;
   }
 
   function section(product) {
     if(product?.role!=='own')return '';
-    return `<section class="product-detail-section sp-section" data-similar-products="${escape(product.sku)}"><h3>Đối thủ cùng ngành &amp; sản phẩm tương tự</h3><div class="sp-market" data-sp-market><p class="sp-loading" role="status">Đang chuẩn bị tìm trên toàn sàn Shopee…</p></div><div class="sp-stored" data-sp-stored><h4>Từ dữ liệu ngành hàng đã thu thập</h4><p class="sp-loading" role="status">Đang đọc dữ liệu đã lưu…</p></div></section>`;
+    return `<section class="product-detail-section sp-section" data-similar-products="${escape(product.sku)}"><h3>Đối thủ cùng ngành &amp; sản phẩm tương tự</h3><div class="sp-stored" data-sp-stored><h4>Sản phẩm cùng tên đã lưu từ phân tích đối thủ</h4><p class="sp-loading" role="status">Đang đọc dữ liệu đã lưu…</p></div><div class="sp-market" data-sp-market><p class="sp-loading" role="status">Đang chuẩn bị tìm trên toàn sàn Shopee…</p></div></section>`;
   }
 
   // ---- Whole-marketplace search (live, through the MarketLens Chrome extension) ----
@@ -122,11 +120,11 @@
     }finally{state.busy=false;draw(product,state);}
   }
 
-  function startMarket(product) {
+  function startMarket(product,serverQuery) {
     const key=JSON.stringify([String(S.shopId||''),String(product.sku)]),cached=marketCache.get(key);
     if(cached&&!cached.busy&&!cached.error&&Date.now()-cached.at<10*60*1000){draw(product,cached);return;}
     if(cached?.busy){draw(product,cached);return;}
-    runMarket(product,defaultQuery(product));
+    runMarket(product,String(serverQuery||'').trim()||defaultQuery(product));
   }
 
   let current=null;
@@ -147,15 +145,17 @@
   async function load(product,dialog) {
     const root=dialog?.querySelector?.('[data-sp-stored]');
     if(!root||typeof S==='undefined'||!S.shopId)return;
-    current=product;startMarket(product);
-    const shopId=S.shopId,heading='<h4>Từ dữ liệu ngành hàng đã thu thập</h4>';
+    current=product;
+    const shopId=S.shopId,heading='<h4>Sản phẩm cùng tên đã lưu từ phân tích đối thủ</h4>';
     try {
       const result=await api('/api/seller/products/'+encodeURIComponent(String(product.sku))+'/market-evidence?shop_id='+encodeURIComponent(String(shopId)));
       if(!root.isConnected)return;
       if(String(result?.sku)!==String(product.sku))throw new Error('Kết quả không thuộc sản phẩm đang xem.');
       root.innerHTML=heading+body(product,result);
+      startMarket(product,result.query);
     }catch(error){
       if(root.isConnected)root.innerHTML=heading+`<p class="sp-error" role="alert">${escape(error?.message||'Chưa tìm được đối thủ.')}</p>`;
+      startMarket(product);
     }
   }
 

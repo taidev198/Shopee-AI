@@ -439,3 +439,19 @@ def test_saved_market_model_requires_public_sku_identity_and_get_never_trains_or
     with app.db() as c:
         after={table:c.execute(f'SELECT count(*) FROM {table}').fetchone()[0] for table in before}
     assert after==before
+
+
+def test_market_evidence_returns_same_name_matches_and_search_query(workspace):
+    app,client,shop,_=workspace
+    with app.db() as c:
+        c.execute('''INSERT INTO observations(shop_id,role,source_shop,sku,name,category,price,sold_total,review_count,rating,product_url,snapshot_date,data_origin)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',(shop['id'],'market','Rival','77.1','Hộp tương đương khác','Gia dụng',50000,10,1,5,'https://shopee.vn/product/77/1','2026-10-15','chrome_live_dom'))
+        own='Hộp cơm văn phòng cắm điện hâm nóng 500ml'
+        c.execute("UPDATE observations SET name=?,category='Gia dụng' WHERE shop_id=? AND role='own' AND sku='12.1'",(own,shop['id']))
+        c.execute('''INSERT INTO observations(shop_id,role,source_shop,sku,name,category,price,sold_total,review_count,rating,product_url,snapshot_date,data_origin)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',(shop['id'],'market','Same Name','77.2',own,'Gia dụng',60000,20,2,4.5,'https://shopee.vn/product/77/2','2026-10-15','chrome_live_dom'))
+    data=client.get('/api/seller/products/12.1/market-evidence',params={'shop_id':shop['id']}).json()
+    assert data['query'] and data['name_match_count']>=1
+    skus=[row['sku'] for row in data['name_matches']]
+    assert '77.2' in skus and '77.1' not in skus
+    assert data['name_matches'][0]['match_kind'] in ('direct_search','name_similarity')

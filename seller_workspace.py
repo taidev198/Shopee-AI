@@ -220,7 +220,18 @@ def install(app, db, report):
             ml = {key: prediction[key] for key in ('model_id','created_at','training_cutoff','algorithm','segment','reason')}
             ml.update(ml_signal_score=number(prediction['score'], 100), freshness='saved_not_revalidated',
                       basis='Vị thế thị trường từ mô hình đã lưu; chưa xác nhận độ mới và không phải dự báo tăng trưởng.')
+        from competitor_analysis import match_competitors, linked_set, product_query
+        from seller_matching import compare_equivalence
+        with db() as c:
+            links = [dict(row) for row in c.execute(
+                'SELECT own_sku,source_shop,sku FROM product_comparison_links WHERE shop_id=?', (shop_id,))]
+        matches = match_competitors(product, source.get('market_products', []), linked_set(links))
+        keep = ('sku', 'name', 'source_shop', 'price', 'price_min', 'price_max', 'sold_total', 'sold_lower_bound',
+                'review_count', 'rating', 'product_url', 'snapshot_date', 'match_kind', 'match_label', 'match_score')
+        name_matches = [{key: item.get(key) for key in keep} | {'equivalence': compare_equivalence(product, item)}
+                        for item in matches[:10]]
         return {'shop_id': shop_id, 'sku': sku, 'competitors': reference, 'history': history,
+                'query': product_query(product), 'name_matches': name_matches, 'name_match_count': len(matches),
                 'history_basis': 'shop_observations', 'observation_days': len(history), 'ml': ml,
                 'limitations': ['Số bán là bộ đếm cộng dồn được lưu; không phải số đơn trong một ngày.',
                     'Lịch sử shop chưa lưu độ chính xác của số hiển thị; không suy ra tốc độ tăng trưởng từ số có thể đã làm tròn.',

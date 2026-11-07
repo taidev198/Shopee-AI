@@ -278,36 +278,45 @@ def top_own_products(own, limit=10):
                   -(_number(item.get('review_count')) or 0), str(item.get('sku'))))[:limit]
 
 
+def linked_set(links=()):
+    return {(str(link['own_sku']), _source_identity(link['source_shop']), str(link['sku'])) for link in links}
+
+
+def match_competitors(item, market, linked):
+    """Same-name products from other shops: saved direct searches first, then strongest name overlap."""
+    own_tokens = _name_tokens(item)
+    matches = []
+    for competitor in market:
+        direct = (str(item['sku']), _source_identity(competitor['source_shop']),
+                  str(competitor['sku'])) in linked
+        tokens = _name_tokens(competitor)
+        common = len(own_tokens & tokens)
+        overlap = common / min(len(own_tokens), len(tokens)) if own_tokens and tokens else 0
+        jaccard = common / len(own_tokens | tokens) if own_tokens or tokens else 0
+        if not direct and not (common >= 2 and overlap >= .5 and jaccard >= .15):
+            continue
+        own_path, other_path = _category_path(item), _category_path(competitor)
+        if (not direct and own_path and other_path and
+                _category_key(item) != _category_key(competitor) and
+                normalized(own_path[0]) != normalized(other_path[0])):
+            continue
+        matches.append({**competitor,
+                        'match_kind': 'direct_search' if direct else 'name_similarity',
+                        'match_label': 'Ứng viên từ lượt tìm trực tiếp; cần đối chiếu quy cách' if direct else
+                                       'Tên tương tự; chưa xác nhận cùng mẫu hoặc quy cách',
+                        'match_score': round(100 * (.6 * overlap + .4 * jaccard), 1)})
+    matches.sort(key=lambda product: (
+        product['match_kind'] != 'direct_search', -product['match_score'],
+        -(_number(product.get('sold_total')) or 0), _source_identity(product['source_shop']),
+        str(product['sku'])))
+    return matches
+
+
 def product_comparisons(own, market, links=()):
-    linked = {(str(link['own_sku']), _source_identity(link['source_shop']), str(link['sku']))
-              for link in links}
+    linked = linked_set(links)
     rows = []
     for item in top_own_products(own):
-        own_tokens = _name_tokens(item)
-        matches = []
-        for competitor in market:
-            direct = (str(item['sku']), _source_identity(competitor['source_shop']),
-                      str(competitor['sku'])) in linked
-            tokens = _name_tokens(competitor)
-            common = len(own_tokens & tokens)
-            overlap = common / min(len(own_tokens), len(tokens)) if own_tokens and tokens else 0
-            jaccard = common / len(own_tokens | tokens) if own_tokens or tokens else 0
-            if not direct and not (common >= 2 and overlap >= .5 and jaccard >= .15):
-                continue
-            own_path, other_path = _category_path(item), _category_path(competitor)
-            if (not direct and own_path and other_path and
-                    _category_key(item) != _category_key(competitor) and
-                    normalized(own_path[0]) != normalized(other_path[0])):
-                continue
-            matches.append({**competitor,
-                            'match_kind': 'direct_search' if direct else 'name_similarity',
-                            'match_label': 'Ứng viên từ lượt tìm trực tiếp; cần đối chiếu quy cách' if direct else
-                                           'Tên tương tự; chưa xác nhận cùng mẫu hoặc quy cách',
-                            'match_score': round(100 * (.6 * overlap + .4 * jaccard), 1)})
-        matches.sort(key=lambda product: (
-            product['match_kind'] != 'direct_search', -product['match_score'],
-            -(_number(product.get('sold_total')) or 0), _source_identity(product['source_shop']),
-            str(product['sku'])))
+        matches = match_competitors(item, market, linked)
         prices_min = [product['price_min'] for product in matches if product.get('price_min') is not None]
         prices_max = [product['price_max'] for product in matches if product.get('price_max') is not None]
         if item.get('units_30d') is not None:
