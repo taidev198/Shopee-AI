@@ -292,3 +292,7 @@ Mỗi bản nháp có thêm nút **Đăng TikTok Shop (tiện ích)** và file M
 ### Quét shop để sao chép (cập nhật)
 - Quét thêm **ảnh trong mô tả** (hiện trong thẻ bản nháp, bấm `+` để thêm vào ảnh sản phẩm, tối đa 9), thương hiệu (từ thuộc tính `Brand` nếu Shopee có hiển thị) và ngành hàng dự phòng từ breadcrumb. Cột "Dữ liệu" ở bước 2 cho biết mỗi sản phẩm đã có gì / còn thiếu gì.
 - Quét lại shop ghi đè chi tiết cũ của từng sản phẩm; mỗi lần đọc tối đa 1000 sản phẩm. Nút **Xóa sản phẩm đã chọn** (bước 2) xóa dữ liệu quét để lấy lại bản mới (bản nháp được giữ). Bản nháp xóa từng cái hoặc hàng loạt ở bước 3. Tiện ích 1.6.0.
+
+## Thu thập theo ngành hàng lưu đầy đủ (cập nhật)
+
+Khi tạo lượt quét ngành hàng (hoặc lịch) trong lúc đang chọn một shop của bạn, mỗi sản phẩm đọc được được lưu đầy đủ vào thư viện sản phẩm của shop đó, giống thu thập shop: giá hoặc khoảng giá, đã bán, đánh giá, tồn kho, mô tả, ảnh, ảnh mô tả, video, thuộc tính, phân loại và ngành hàng. Sản phẩm xuất hiện trong **Sao chép sản phẩm** với nguồn `Ngành: <tên ngành>` để tạo bản nháp. Số liệu theo ngày vẫn nằm ở bảng snapshot dùng cho xu hướng. Lượt quét tạo khi chưa chọn shop riêng chỉ lưu snapshot như trước.

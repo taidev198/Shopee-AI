@@ -354,7 +354,8 @@ document.addEventListener('click', async e=>{
     if (['marketCreate','marketScanNow','marketSaveSchedule'].includes(b.id)) {
       const categories=marketState.categories.filter(c=>c.selected).map(({name,url})=>({name,url}));
       if (!categories.length) throw new Error('Chọn ít nhất một ngành hàng.');
-      const payload={categories,max_pages:Number($('marketPages').value),max_products:Number($('marketLimit').value),full_scan:$('marketMode').value==='full'};
+      const ownShop=(typeof S!=='undefined'&&S.data?.shop&&!S.data.shop.is_demo)?S.shopId:'';
+      const payload={categories,max_pages:Number($('marketPages').value),max_products:Number($('marketLimit').value),full_scan:$('marketMode').value==='full',shop_id:ownShop||''};
       if (b.id === 'marketSaveSchedule') {
         const start=$('marketScheduleStart').value;
         if (!start) throw new Error('Chọn ngày giờ bắt đầu theo giờ Việt Nam.');
@@ -458,7 +459,7 @@ async function scanAllMarket() {
         throw new Error(`Mới đọc được ${categories.length} ngành hàng; danh mục chưa tải đủ.${note?' '+note:''} Chưa tạo hàng đợi quét tất cả. Kiểm tra trang Shopee rồi bấm Quét tất cả ngành hàng để đọc lại.`);
       }
       if (categories.length>100) throw new Error(`Danh mục có ${categories.length} link, vượt phạm vi 100 ngành hàng mỗi lượt. Chưa tạo hàng đợi; hãy đọc lại danh mục chính của Shopee.`);
-      const campaign=await marketPost('/campaigns',{categories,full_scan:true});
+      const campaign=await marketPost('/campaigns',{categories,full_scan:true,shop_id:(typeof S!=='undefined'&&S.data?.shop&&!S.data.shop.is_demo)?S.shopId:''});
       if (!Array.isArray(campaign?.run_ids) || !campaign.run_ids.length || campaign.run_ids.some(id=>typeof id!=='string' || !id)) throw new Error('Máy chủ chưa trả về hàng đợi hợp lệ. Kiểm tra danh sách lượt quét và thử lại.');
       ids=campaign.run_ids;
       if (marketState.stop) {

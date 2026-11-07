@@ -424,3 +424,32 @@ def test_concurrent_repeated_timeout_skips_only_one_sku(client):
     assert client.get(root+'/next').json()=={'type':'detail','url':second}
     result=next(row for row in client.get('/api/category-market/runs').json() if row['id']==rid)
     assert result['failed']==1 and result['completed']==0
+
+
+def test_category_products_are_saved_in_the_shop_library_with_full_detail(client):
+    shop = client.post('/api/shops', json={'url': 'https://shopee.vn/my_own_shop'}).json()
+    rid = create(client, shop_id=shop['id'], max_pages=1, max_products=5)
+    root = f'/api/category-market/runs/{rid}'
+    client.post(root + '/listing', json={'page': 0, 'urls': ['https://shopee.vn/product/12/34'], 'has_next': False})
+    detail = {'url': 'https://shopee.vn/product/12/34', 'name': 'Gio dung quan ao', 'description': 'Mo ta day du',
+              'images': ['https://down-vn.img.susercontent.com/file/a'], 'description_images': ['https://down-vn.img.susercontent.com/file/b'],
+              'categories': ['Nha cua', 'Giat ui'], 'price_text': '₫89.000 - ₫129.000', 'sold_text': '1,2k đã bán',
+              'stock_text': '350 sản phẩm có sẵn',
+              'attributes': [{'name': 'Brand', 'value': 'Acme'}],
+              'variants': [{'name': 'Màu', 'options': ['Trắng', 'Xám']}]}
+    assert client.post(root + '/detail', json=detail).json()['saved']
+    sources = client.get('/api/listings/sources', params={'shop_id': shop['id']}).json()
+    assert len(sources) == 1 and sources[0]['source_shop'] == 'Ngành: Gia dụng'
+    assert sources[0]['price'] == 89000 and sources[0]['coverage']['variants'] and sources[0]['coverage']['images']
+    draft = client.post('/api/listings/drafts', json={'shop_id': shop['id'], 'items': [{'source_shop': 'Ngành: Gia dụng', 'sku': sources[0]['sku']}]}).json()
+    assert draft['created'] and draft['created'][0]['variants'][0]['options'] == ['Trắng', 'Xám']
+    assert draft['created'][0]['attributes'][0]['value'] == 'Acme'
+
+
+def test_category_run_without_shop_keeps_only_market_snapshots(client):
+    shop = client.post('/api/shops', json={'url': 'https://shopee.vn/my_own_shop'}).json()
+    rid = create(client)
+    root = f'/api/category-market/runs/{rid}'
+    client.post(root + '/listing', json={'page': 0, 'urls': ['https://shopee.vn/product/12/34'], 'has_next': False})
+    client.post(root + '/detail', json={'url': 'https://shopee.vn/product/12/34', 'name': 'San pham', 'price_text': '10.000₫'})
+    assert client.get('/api/listings/sources', params={'shop_id': shop['id']}).json() == []

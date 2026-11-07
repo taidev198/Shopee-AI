@@ -11,7 +11,7 @@ from urllib.parse import urlparse, urlunparse
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
-from competitor_analysis import _display_number
+from competitor_analysis import _display_number, price_range
 
 
 def category_url(value):
@@ -32,6 +32,7 @@ class Category(BaseModel):
 
 
 class Campaign(BaseModel):
+    shop_id: str = Field(default='', max_length=64)  # own shop whose product library receives the full product data
     full_scan: bool = False
     categories: list[Category] = Field(min_length=1, max_length=100)
     max_pages: int = Field(default=5, ge=1, le=100)
@@ -126,9 +127,11 @@ def install(app, db, Detail, identity):
         ''')
         columns = {r['name'] for r in c.execute('PRAGMA table_info(market_runs)')}
         for name, kind in [('full_scan', 'INTEGER NOT NULL DEFAULT 0'), ('schedule_id', "TEXT NOT NULL DEFAULT ''"),
-                           ('superseded', 'INTEGER NOT NULL DEFAULT 0')]:
+                           ('superseded', 'INTEGER NOT NULL DEFAULT 0'), ('shop_id', "TEXT NOT NULL DEFAULT ''")]:
             if name not in columns:
                 c.execute(f'ALTER TABLE market_runs ADD COLUMN {name} {kind}')
+        if 'shop_id' not in {r['name'] for r in c.execute('PRAGMA table_info(market_schedules)')}:
+            c.execute("ALTER TABLE market_schedules ADD COLUMN shop_id TEXT NOT NULL DEFAULT ''")
         if 'superseded' not in columns:
             c.execute("UPDATE market_runs SET superseded=1 WHERE status='partial' AND error LIKE ?",
                       ('Đã chuyển sang lượt quét hết ngành hàng mới%',))
@@ -138,17 +141,19 @@ def install(app, db, Detail, identity):
         c.execute('INSERT INTO market_categories VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,url=excluded.url', (cid, category.name.strip(), category.url))
         return cid
 
-    def enqueue(c, cid, max_pages, max_products, full_scan, schedule_id=''):
+    def enqueue(c, cid, max_pages, max_products, full_scan, schedule_id='', shop_id=''):
         active = c.execute("SELECT id,full_scan FROM market_runs WHERE category_id=? AND status IN ('pending','paused') AND superseded=0", (cid,)).fetchone()
         if active:
             if not full_scan or active['full_scan']:
+                if shop_id:
+                    c.execute("UPDATE market_runs SET shop_id=? WHERE id=? AND shop_id=''", (shop_id, active['id']))
                 return active['id']
             # Keep the old checkpoints and snapshots; an exhaustive scan must not
             # inherit a cursor that discarded cards at a sample limit.
             c.execute("UPDATE market_runs SET status='partial',superseded=1,error='Đã chuyển sang lượt quét hết ngành hàng mới; dữ liệu đã lưu được giữ nguyên.' WHERE id=?", (active['id'],))
         rid = uuid.uuid4().hex
-        c.execute('INSERT INTO market_runs(id,category_id,created_at,max_pages,max_products,full_scan,schedule_id) VALUES(?,?,?,?,?,?,?)',
-                  (rid, cid, now(), max_pages, max_products, int(full_scan), schedule_id))
+        c.execute('INSERT INTO market_runs(id,category_id,created_at,max_pages,max_products,full_scan,schedule_id,shop_id) VALUES(?,?,?,?,?,?,?,?)',
+                  (rid, cid, now(), max_pages, max_products, int(full_scan), schedule_id, shop_id))
         return rid
 
     def schedule_tick():
@@ -157,7 +162,7 @@ def install(app, db, Detail, identity):
         with db() as c:
             c.execute('BEGIN IMMEDIATE')
             for item in c.execute('SELECT * FROM market_schedules WHERE enabled=1 AND next_run_at<=?', (stamp,)).fetchall():
-                enqueue(c, item['category_id'], item['max_pages'], item['max_products'], item['full_scan'], item['id'])
+                enqueue(c, item['category_id'], item['max_pages'], item['max_products'], item['full_scan'], item['id'], item['shop_id'])
                 due = datetime.fromisoformat(item['next_run_at'])
                 interval = timedelta(hours=item['interval_hours'])
                 following = due + (int((current-due) / interval)+1)*interval
@@ -169,11 +174,11 @@ def install(app, db, Detail, identity):
             c.execute('BEGIN IMMEDIATE')
             for category in {x.url: x for x in payload.categories}.values():
                 cid = save_category(c, category)
-                c.execute('''INSERT INTO market_schedules(id,category_id,interval_hours,next_run_at,max_pages,max_products,full_scan)
-                  VALUES(?,?,?,?,?,?,?) ON CONFLICT(category_id) DO UPDATE SET interval_hours=excluded.interval_hours,
+                c.execute('''INSERT INTO market_schedules(id,category_id,interval_hours,next_run_at,max_pages,max_products,full_scan,shop_id)
+                  VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(category_id) DO UPDATE SET interval_hours=excluded.interval_hours,
                   next_run_at=excluded.next_run_at,max_pages=excluded.max_pages,max_products=excluded.max_products,
-                  full_scan=excluded.full_scan,enabled=1''',
-                  (uuid.uuid4().hex,cid,payload.interval_hours,payload.start_at.isoformat(),payload.max_pages,payload.max_products,int(payload.full_scan)))
+                  full_scan=excluded.full_scan,shop_id=excluded.shop_id,enabled=1''',
+                  (uuid.uuid4().hex,cid,payload.interval_hours,payload.start_at.isoformat(),payload.max_pages,payload.max_products,int(payload.full_scan),payload.shop_id))
         schedule_tick()
         return {'saved': True}
 
@@ -200,7 +205,7 @@ def install(app, db, Detail, identity):
             item = c.execute('SELECT * FROM market_schedules WHERE id=?', (sid,)).fetchone()
             if not item:
                 raise HTTPException(404, 'Không tìm thấy lịch')
-            rid = enqueue(c,item['category_id'],item['max_pages'],item['max_products'],item['full_scan'],sid)
+            rid = enqueue(c,item['category_id'],item['max_pages'],item['max_products'],item['full_scan'],sid,item['shop_id'])
         return {'run_ids': [rid]}
 
     @router.get('/scheduled-ready')
@@ -234,7 +239,7 @@ def install(app, db, Detail, identity):
     def create(payload: Campaign):
         with db() as c:
             c.execute('BEGIN IMMEDIATE')
-            ids = [enqueue(c, save_category(c, category), payload.max_pages, payload.max_products, payload.full_scan)
+            ids = [enqueue(c, save_category(c, category), payload.max_pages, payload.max_products, payload.full_scan, '', payload.shop_id)
                    for category in {x.url: x for x in payload.categories}.values()]
         return {'run_ids': ids}
 
@@ -292,6 +297,38 @@ def install(app, db, Detail, identity):
             finish(c, rid)
         return {'added': added, 'listing_done': done}
 
+    def save_product_library(c, r, sku, url, payload, price, sold, rating, stamp):
+        """Keep the full product (price, variants, images, description…) in the shop's product library,
+        exactly like a shop scan, so it can be analysed and copied into drafts."""
+        if not r['shop_id']:
+            return
+        shop = c.execute('SELECT id,is_demo FROM shops WHERE id=?', (r['shop_id'],)).fetchone()
+        if not shop or shop['is_demo']:
+            return
+        category = c.execute('SELECT name FROM market_categories WHERE id=?', (r['category_id'],)).fetchone()
+        source = ('Ngành: ' + (category['name'] if category else r['category_id']))[:120]
+        shown = ' > '.join(payload.categories)[:120] if payload.categories else (category['name'] if category else '')
+        listing_price = price if price is not None else price_range(payload.price_text)[0]
+        stock_match = re.search(r'\d[\d.,]*', payload.stock_text or '')
+        stock = _display_number(stock_match.group(0)) if stock_match else None
+        day = stamp[:10]
+        c.execute('''INSERT INTO observations
+            (shop_id,role,source_shop,sku,name,category,price,units_30d,revenue_30d,sold_total,views_30d,rating,
+             review_count,cost,stock,product_url,snapshot_date,data_origin)
+            VALUES(?,'market',?,?,?,?,?,NULL,NULL,?,NULL,?,?,NULL,?,?,?,'category_market')
+            ON CONFLICT(shop_id,role,source_shop,sku,snapshot_date) DO UPDATE SET name=excluded.name,
+              category=excluded.category,price=excluded.price,sold_total=excluded.sold_total,rating=excluded.rating,
+              review_count=excluded.review_count,stock=excluded.stock,product_url=excluded.product_url,
+              data_origin=excluded.data_origin''',
+            (r['shop_id'], source, sku, payload.name[:300], shown, listing_price, sold, rating,
+             _display_number(payload.review_count_text), stock, url, day))
+        c.execute('''INSERT INTO product_details
+            (shop_id,role,source_shop,sku,status,detail_json,error,collected_at,last_attempt_at,last_error)
+            VALUES(?,'market',?,?,'done',?,'',?,?,'')
+            ON CONFLICT(shop_id,role,source_shop,sku) DO UPDATE SET status='done',detail_json=excluded.detail_json,
+              error='',collected_at=excluded.collected_at,last_attempt_at=excluded.last_attempt_at,last_error=''
+            ''', (r['shop_id'], source, sku, json.dumps(payload.model_dump(), ensure_ascii=False), stamp, stamp))
+
     @router.post('/runs/{rid}/detail')
     def detail(rid: str, payload: Detail):
         sku = identity(payload.url)
@@ -321,6 +358,7 @@ def install(app, db, Detail, identity):
               review_count=excluded.review_count,raw_json=excluded.raw_json''',
               (sku, stamp[:10], r['category_id'], payload.name, queued['url'], stamp, price, sold, int(approximate),
                rating, _display_number(payload.review_count_text), json.dumps(raw, ensure_ascii=False)))
+            save_product_library(c, r, sku, queued['url'], payload, price, sold, rating, stamp)
             c.execute("UPDATE market_queue SET status='done',error='' WHERE run_id=? AND sku=?", (rid, sku))
             c.execute("UPDATE market_runs SET status='pending',error='' WHERE id=?", (rid,))
             finish(c, rid)
