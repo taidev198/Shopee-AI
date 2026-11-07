@@ -5,9 +5,10 @@ import re
 from fastapi.testclient import TestClient
 
 
-def make_client(tmp_path, monkeypatch, site=''):
+def make_client(tmp_path, monkeypatch, site='', today='2099-01-01'):
     monkeypatch.setenv('MARKET_DB', str(tmp_path / 'market.db'))
     monkeypatch.delenv('RENDER_EXTERNAL_URL', raising=False)
+    monkeypatch.setenv('BLOG_TODAY', today)  # default: everything published; scheduling tests pass a real date
     if site:
         monkeypatch.setenv('SITE_URL', site)
     else:
@@ -69,7 +70,10 @@ def test_home_page_links_to_blog_and_has_seo_tags(tmp_path, monkeypatch):
     assert home.status_code == 200 and '{{' not in home.text
     assert '<link rel="canonical" href="https://shop.example.com/">' in home.text
     assert 'href="#blog"' in home.text and 'id="blog"' in home.text and 'href="/blog"' in home.text
-    for post in blog_posts.POSTS[:3]:
+    import blog
+    newest = blog.visible_posts()[:3]
+    assert len(newest) == 3
+    for post in newest:
         assert f'href="/blog/{post["slug"]}"' in home.text
     assert 'banhang.shopee.vn/edu/article' in home.text
 
@@ -92,7 +96,7 @@ def test_step_diagrams_are_served_with_watermark(tmp_path, monkeypatch):
     import blog_posts
     with make_client(tmp_path, monkeypatch) as anonymous:
         with_steps = [p for p in blog_posts.POSTS if p['steps']]
-        assert len(with_steps) >= 18
+        assert len(with_steps) >= 33
         for post in with_steps:
             image = anonymous.get(f'/blog/steps/{post["slug"]}.svg')
             assert image.status_code == 200 and image.headers['content-type'].startswith('image/svg+xml')
@@ -101,10 +105,47 @@ def test_step_diagrams_are_served_with_watermark(tmp_path, monkeypatch):
         assert anonymous.get('/blog/steps/none.svg').status_code == 404
 
 
-def test_blog_has_at_least_nineteen_unique_posts(tmp_path, monkeypatch):
+def test_blog_has_unique_posts_and_valid_related(tmp_path, monkeypatch):
     import blog_posts
     slugs = [p['slug'] for p in blog_posts.POSTS]
-    assert len(slugs) == len(set(slugs)) >= 19
+    assert len(slugs) == len(set(slugs)) >= 33
     for post in blog_posts.POSTS:
         for slug in post['related']:
             assert slug in slugs, (post['slug'], slug)
+
+
+def test_scheduled_posts_stay_hidden_until_their_date(tmp_path, monkeypatch):
+    import blog_posts
+    future = [p for p in blog_posts.POSTS if p['published'] > '2026-11-07']
+    assert future, 'queue should contain scheduled posts'
+    first, second = future[0], future[1]
+    with make_client(tmp_path, monkeypatch, 'https://shop.example.com', today='2026-11-08') as anonymous:
+        for path in (f'/blog/{first["slug"]}', f'/blog/cover/{first["slug"]}.svg', f'/blog/steps/{first["slug"]}.svg'):
+            assert anonymous.get(path).status_code == 404, path
+        listing = anonymous.get('/blog').text + anonymous.get('/').text + anonymous.get('/sitemap.xml').text
+        assert first['slug'] not in listing and second['slug'] not in listing
+    with make_client(tmp_path, monkeypatch, 'https://shop.example.com', today=first['published']) as anonymous:
+        assert anonymous.get(f'/blog/{first["slug"]}').status_code == 200
+        assert first['slug'] in anonymous.get('/blog').text and first['slug'] in anonymous.get('/sitemap.xml').text
+        assert second['slug'] not in anonymous.get('/blog').text  # next one is still scheduled
+        assert anonymous.get(f'/blog/{second["slug"]}').status_code == 404
+
+
+def test_scheduled_posts_only_link_to_posts_published_before_them(tmp_path, monkeypatch):
+    import blog_posts
+    dates = {p['slug']: p['published'] for p in blog_posts.POSTS}
+    for post in blog_posts.POSTS:
+        linked = set(re.findall(r'href="/blog/([^"#/]+)"', post['body'])) | set(post['related'])
+        for slug in linked:
+            assert slug in dates, (post['slug'], slug)
+            assert dates[slug] <= post['published'], f'{post["slug"]} ({post["published"]}) links to later post {slug} ({dates[slug]})'
+
+
+def test_queue_posts_publish_on_mon_wed_fri_in_order():
+    import datetime
+    import blog_posts
+    queued = blog_posts.QUEUE
+    dates = [p['published'] for p in queued]
+    assert dates == sorted(dates) and len(set(dates)) == len(dates)
+    assert all(datetime.date.fromisoformat(d).weekday() in (0, 2, 4) for d in dates)
+    assert dates[0] == '2026-11-09'

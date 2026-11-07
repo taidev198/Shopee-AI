@@ -3,7 +3,7 @@ import html
 import json
 import os
 import re
-from datetime import date
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
@@ -11,6 +11,23 @@ from fastapi.responses import Response
 from blog_posts import POSTS, REFERENCE_NOTE, REFERENCE_URL
 
 BY_SLUG = {p['slug']: p for p in POSTS}
+VN_TZ = timezone(timedelta(hours=7))
+
+
+def today():
+    """Publishing date in Vietnam time (BLOG_TODAY overrides it, used by tests)."""
+    return os.environ.get('BLOG_TODAY', '').strip() or datetime.now(VN_TZ).date().isoformat()
+
+
+def visible_posts():
+    """Posts whose publish date has arrived, newest first; scheduled posts stay hidden everywhere."""
+    now = today()
+    return sorted((p for p in POSTS if p['published'] <= now), key=lambda p: p['published'], reverse=True)
+
+
+def get_post(slug):
+    post = BY_SLUG.get(slug)
+    return post if post and post['published'] <= today() else None
 CSS = '/static/blog.css?v=20261107-blog-04'
 BRAND = 'MarketLens'
 
@@ -143,7 +160,7 @@ def card(post):
 
 def home_cards(limit=3):
     """HTML cards for the landing page (server-rendered so crawlers see the links)."""
-    return ''.join(card(p) for p in POSTS[:limit])
+    return ''.join(card(p) for p in visible_posts()[:limit])
 
 
 def header():
@@ -189,7 +206,7 @@ def index_html(base):
         '<h1>Kinh nghiệm bán hàng trên Shopee: từ chọn hàng đến tối ưu lợi nhuận</h1>'
         '<p>Hướng dẫn thực tế cho người bán: đăng sản phẩm, đặt giá, nghiên cứu đối thủ, tìm sản phẩm xu hướng và làm ảnh, video. '
         'Mỗi bài có ví dụ cụ thể và checklist để áp dụng ngay.</p></div></section>'
-        f'<section class="wrap"><div class="post-grid">{"".join(card(p) for p in POSTS)}</div>'
+        f'<section class="wrap"><div class="post-grid">{"".join(card(p) for p in visible_posts())}</div>'
         f'{REFERENCE_NOTE}'
         '<div class="cta-box"><h2>Muốn thấy số liệu của chính shop bạn?</h2>'
         '<p>Đăng ký MarketLens để thu thập sản phẩm, so sánh đối thủ và tính lãi từng SKU.</p>'
@@ -198,7 +215,7 @@ def index_html(base):
     canonical = base + '/blog'
     graph = json_ld({
         '@context': 'https://schema.org', '@type': 'Blog', 'name': 'Blog MarketLens', 'url': canonical, 'inLanguage': 'vi',
-        'blogPost': [{'@type': 'BlogPosting', 'headline': p['title'], 'url': f'{base}/blog/{p["slug"]}', 'datePublished': p['published']} for p in POSTS],
+        'blogPost': [{'@type': 'BlogPosting', 'headline': p['title'], 'url': f'{base}/blog/{p["slug"]}', 'datePublished': p['published']} for p in visible_posts()],
     })
     return page('Blog bán hàng Shopee: hướng dẫn, mẹo và phân tích | MarketLens',
                 'Blog MarketLens: hướng dẫn bán hàng trên Shopee, tối ưu tiêu đề, tính giá và lợi nhuận, nghiên cứu đối thủ, chọn sản phẩm xu hướng.',
@@ -216,7 +233,7 @@ def steps_figure(post):
 def post_html(post, base):
     canonical = f'{base}/blog/{post["slug"]}'
     faq_items = ''.join(f'<details><summary>{esc(q)}</summary><p>{esc(a)}</p></details>' for q, a in post['faq'])
-    related = ''.join(card(BY_SLUG[s]) for s in post['related'] if s in BY_SLUG)
+    related = ''.join(card(get_post(s)) for s in post['related'] if get_post(s))
     operator = os.environ.get('LEGAL_OPERATOR_NAME', '').strip() or BRAND
     body = (
         '<div class="wrap article-wrap"><nav class="crumbs" aria-label="Đường dẫn"><a href="/">Trang chủ</a> › <a href="/blog">Blog</a> › '
@@ -253,8 +270,9 @@ def post_html(post, base):
 
 
 def sitemap_xml(base):
-    urls = [(base + '/', '2026-11-07', '1.0'), (base + '/blog', max(p['published'] for p in POSTS), '0.8')]
-    urls += [(f'{base}/blog/{p["slug"]}', p['published'], '0.7') for p in POSTS]
+    shown = visible_posts()
+    urls = [(base + '/', '2026-11-07', '1.0'), (base + '/blog', max(p['published'] for p in shown), '0.8')]
+    urls += [(f'{base}/blog/{p["slug"]}', p['published'], '0.7') for p in shown]
     urls += [(base + '/privacy', '2026-11-07', '0.3'), (base + '/terms', '2026-11-07', '0.3')]
     rows = ''.join(f'<url><loc>{esc(u)}</loc><lastmod>{d}</lastmod><priority>{p}</priority></url>' for u, d, p in urls)
     return f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{rows}</urlset>'
@@ -277,21 +295,21 @@ def install(app):
 
     @router.get('/blog/{slug}')
     def blog_post(slug: str, request: Request):
-        post = BY_SLUG.get(slug)
+        post = get_post(slug)
         if not post:
             raise HTTPException(404, 'Không tìm thấy bài viết')
         return Response(post_html(post, site_url(request)), media_type='text/html; charset=utf-8', headers=cache)
 
     @router.get('/blog/cover/{slug}.svg')
     def blog_cover(slug: str):
-        post = BY_SLUG.get(slug)
+        post = get_post(slug)
         if not post:
             raise HTTPException(404, 'Không tìm thấy hình')
         return Response(cover_svg(post), media_type='image/svg+xml', headers={'Cache-Control': 'public, max-age=86400'})
 
     @router.get('/blog/steps/{slug}.svg')
     def blog_steps(slug: str):
-        post = BY_SLUG.get(slug)
+        post = get_post(slug)
         if not post or not post.get('steps'):
             raise HTTPException(404, 'Không tìm thấy hình')
         return Response(steps_svg(post), media_type='image/svg+xml', headers={'Cache-Control': 'public, max-age=86400'})

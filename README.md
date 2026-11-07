@@ -318,3 +318,10 @@ Nội dung mô tả đúng hiện trạng ứng dụng (tài khoản băm PBKDF2
 - SEO: HTML dựng phía máy chủ, `<title>`/description/canonical/Open Graph, JSON-LD (BlogPosting, BreadcrumbList, FAQPage), mục lục, liên kết nội bộ, `/sitemap.xml`, `/robots.txt`.
 - Đặt biến `SITE_URL` (ví dụ `https://shopee-ai.onrender.com`) để canonical/sitemap dùng đúng tên miền; mặc định lấy `RENDER_EXTERNAL_URL` hoặc địa chỉ request.
 - Sau khi deploy: gửi `https://<tên-miền>/sitemap.xml` trong Google Search Console.
+
+### Lên lịch đăng bài blog
+
+- Bài đã sẵn sàng nhưng chưa tới ngày nằm trong hàng chờ (`blog_queue_*.py`, nạp ở cuối `blog_posts.py`). Ngày đăng được gán tự động: **Thứ Hai, Tư, Sáu**, bắt đầu 09/11/2026, theo giờ Việt Nam.
+- Bài chưa tới ngày bị ẩn hoàn toàn: không có trong `/blog`, trang chủ, `sitemap.xml`, bài liên quan; truy cập trực tiếp trả 404. Không cần cron: tới ngày là tự hiện (trang được cache tối đa 5 phút).
+- Thêm bài mới: tạo `blog_queue_N.py` (danh sách dict không có `published`), import và nối vào `QUEUE` trong `blog_posts.py`. Bài trong hàng chờ chỉ được liên kết tới bài có ngày đăng bằng hoặc sớm hơn (có test kiểm tra).
+- Muốn kiểm tra giao diện một ngày bất kỳ: đặt biến `BLOG_TODAY=YYYY-MM-DD` khi chạy local.

@@ -519,3 +519,26 @@ from blog_posts_more import MORE, STEPS  # noqa: E402  (second batch + step list
 POSTS.extend(MORE)
 for _post in POSTS:
     _post.setdefault('steps', STEPS.get(_post['slug'], []))
+
+
+# --- Scheduled queue: published on Monday, Wednesday and Friday, starting 2026-11-09 -----------------------------------
+from datetime import date as _date, timedelta as _timedelta  # noqa: E402
+from blog_queue_1 import QUEUE_1  # noqa: E402
+
+QUEUE = list(QUEUE_1)
+SCHEDULE_START = _date(2026, 11, 9)
+PUBLISH_WEEKDAYS = (0, 2, 4)
+
+
+def _schedule(items, start):
+    day = start
+    for item in items:
+        while day.weekday() not in PUBLISH_WEEKDAYS:
+            day += _timedelta(days=1)
+        item['published'] = day.isoformat()
+        item.setdefault('steps', [])
+        day += _timedelta(days=1)
+    return items
+
+
+POSTS.extend(_schedule(QUEUE, SCHEDULE_START))
