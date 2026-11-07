@@ -66,11 +66,24 @@ function isVerificationRoute(value) {
   return !!u && /\/(?:verify|captcha|(?:buyer\/)?login)(?:\/|$)/i.test(u.pathname);
 }
 
+// Shopee pages are read in their own minimized window, so nothing opens or steals focus in the window the seller is
+// using. Chrome still needs a page to read Shopee, but it stays out of the tab strip until verification is required.
+async function openWorkTab(url, sender) {
+  if (chrome.windows?.create) {
+    try {
+      const created = await chrome.windows.create({url, state: 'minimized', focused: false});
+      const tab = created?.tabs?.[0];
+      if (tab) return tab;
+    } catch { /* fall back to a background tab */ }
+  }
+  return chrome.tabs.create({url, active: false, ...(sender?.tab?.windowId ? {windowId: sender.tab.windowId} : {})});
+}
+
 // Work tabs open in the background; only a tab that needs the seller's verification/login is brought to the front.
 function bringToFront(tabId) {
   try {
     Promise.resolve(chrome.tabs.update(tabId, {active: true}))
-      .then(tab => tab && chrome.windows.update(tab.windowId, {focused: true})).catch(() => {});
+      .then(tab => tab && chrome.windows?.update(tab.windowId, {state: 'normal', focused: true})).catch(() => {});
   } catch { /* focusing is best effort */ }
 }
 
@@ -123,7 +136,7 @@ async function collect(url, sender) {
   let keepForVerification = false;
   const deadline = Date.now() + MAX_DURATION_MS;
   try {
-    const tab = await editChromeTab(() => chrome.tabs.create({url: shopUrl, active: false, ...(sender.tab?.windowId ? {windowId: sender.tab.windowId} : {})}), deadline);
+    const tab = await editChromeTab(() => openWorkTab(shopUrl, sender), deadline);
     tabId = tab.id;
     const read = async action => {
       if (Date.now() >= deadline) throw new Error('Lượt quét đã hết thời gian chờ. Hãy mở shop kiểm tra rồi quét lại.');
@@ -221,8 +234,7 @@ async function collectDetail(url, sender) {
   let keepForVerification = false;
   const deadline = Date.now() + PRODUCT_DETAIL_TIMEOUT_MS;
   try {
-    const tab = await editChromeTab(() => chrome.tabs.create({url: productUrl, active: false,
-      ...(sender.tab?.windowId ? {windowId: sender.tab.windowId} : {})}), deadline);
+    const tab = await editChromeTab(() => openWorkTab(productUrl, sender), deadline);
     tabId = tab.id;
     let previous = '';
     let stable = 0;
@@ -296,8 +308,7 @@ async function discover(queryValue, ownShopValue, sender) {
   const result = {query, candidates: [], errors: []};
   const transientNavigation = error => /(?:frame.*removed|context.*invalidated|document.*unloaded|frame.*navigat)/i.test(error.message);
   try {
-    const tab = await editChromeTab(() => chrome.tabs.create({url: `https://shopee.vn/search?keyword=${encodeURIComponent(query)}`, active: false,
-      ...(sender.tab?.windowId ? {windowId: sender.tab.windowId} : {})}), deadline);
+    const tab = await editChromeTab(() => openWorkTab(`https://shopee.vn/search?keyword=${encodeURIComponent(query)}`, sender), deadline);
     tabId = tab.id;
     const inspect = async (func, options) => {
       if (Date.now() >= deadline) throw new Error('Đã hết thời gian tìm đối thủ cho từ khóa này.');
@@ -405,7 +416,7 @@ async function collectCategory(url, sender, home = false) {
   let keepForInspection = false;
   const deadline = Date.now() + 35000;
   try {
-    const tab = await editChromeTab(() => chrome.tabs.create({url: target, active: false, ...(sender.tab?.windowId ? {windowId: sender.tab.windowId} : {})}), deadline);
+    const tab = await editChromeTab(() => openWorkTab(target, sender), deadline);
     tabId = tab.id;
     const urls = new Set();
     const categories = new Map();
@@ -502,7 +513,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
   if (message.action === 'ping') {
-    sendResponse({ok: true, result: {version: chrome.runtime.getManifest().version, maxPages: MAX_PAGES, maxProducts: MAX_PRODUCTS, details: true, capabilities: {discover: true, categories: true, categoryCatalog: true, verificationPause: true, tabEditRetry: true, categoryCardsV2: true, categoryParallel: MAX_PARALLEL_CATEGORY, backgroundTabs: true}, mode: 'chrome_dom'}});
+    sendResponse({ok: true, result: {version: chrome.runtime.getManifest().version, maxPages: MAX_PAGES, maxProducts: MAX_PRODUCTS, details: true, capabilities: {discover: true, categories: true, categoryCatalog: true, verificationPause: true, tabEditRetry: true, categoryCardsV2: true, categoryParallel: MAX_PARALLEL_CATEGORY, backgroundTabs: true, hiddenWindow: true}, mode: 'chrome_dom'}});
     return false;
   }
   if (message.action === 'listing') {

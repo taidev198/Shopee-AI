@@ -141,7 +141,7 @@ async function discoverCompetitors(customQuery){
  try{
    const bridge=await window.MarketLensChrome.ping();
    const version=String(bridge.version||'').split('.').map(Number);
-   if(typeof window.MarketLensChrome.discover!=='function'||bridge.capabilities?.discover!==true||!(version[0]>1||version[0]===1&&version[1]>=2))throw new Error('Tự tìm đối thủ cần tiện ích MarketLens 1.7.0 trở lên (chạy nền, không mở tab mới). Hãy tải lại tiện ích từ thư mục browser-extension mới rồi tải lại trang ứng dụng.');
+   if(typeof window.MarketLensChrome.discover!=='function'||bridge.capabilities?.discover!==true||!(version[0]>1||version[0]===1&&version[1]>=2))throw new Error('Tự tìm đối thủ cần tiện ích MarketLens 1.8.0 trở lên (chạy nền trong cửa sổ thu nhỏ, không mở tab mới). Hãy tải lại tiện ích từ thư mục browser-extension mới rồi tải lại trang ứng dụng.');
    const candidates=[],errors=[];
    for(let index=0;index<queries.length;index++){
      if(S.shopId!==shopId||S.competitor!==state)break;
@@ -197,7 +197,7 @@ async function compareTopProducts(ownSku){
  try{
    tell('Đang tìm đối thủ cho từng sản phẩm bán tốt...');render();
    const bridge=await window.MarketLensChrome.ping(),version=String(bridge.version||'').split('.').map(Number);
-   if(typeof window.MarketLensChrome.discover!=='function'||bridge.capabilities?.discover!==true||!(version[0]>1||version[0]===1&&version[1]>=2))throw new Error('Tìm đối thủ theo sản phẩm cần tiện ích MarketLens 1.7.0 trở lên (chạy nền, không mở tab mới). Hãy tải lại tiện ích và trang ứng dụng.');
+   if(typeof window.MarketLensChrome.discover!=='function'||bridge.capabilities?.discover!==true||!(version[0]>1||version[0]===1&&version[1]>=2))throw new Error('Tìm đối thủ theo sản phẩm cần tiện ích MarketLens 1.8.0 trở lên (chạy nền trong cửa sổ thu nhỏ, không mở tab mới). Hãy tải lại tiện ích và trang ứng dụng.');
    for(let index=0;index<comparisons.length;index++){
      if(!current()||run.stopRequested)break;
      const comparison=comparisons[index];
