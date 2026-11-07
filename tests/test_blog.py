@@ -118,7 +118,8 @@ def test_scheduled_posts_stay_hidden_until_their_date(tmp_path, monkeypatch):
     import blog_posts
     future = [p for p in blog_posts.POSTS if p['published'] > '2026-11-07']
     assert future, 'queue should contain scheduled posts'
-    first, second = future[0], future[1]
+    first = future[0]
+    second = next(p for p in future if p['published'] > first['published'])  # a post scheduled for a later day
     with make_client(tmp_path, monkeypatch, 'https://shop.example.com', today='2026-11-08') as anonymous:
         for path in (f'/blog/{first["slug"]}', f'/blog/cover/{first["slug"]}.svg', f'/blog/steps/{first["slug"]}.svg'):
             assert anonymous.get(path).status_code == 404, path
@@ -141,11 +142,11 @@ def test_scheduled_posts_only_link_to_posts_published_before_them(tmp_path, monk
             assert dates[slug] <= post['published'], f'{post["slug"]} ({post["published"]}) links to later post {slug} ({dates[slug]})'
 
 
-def test_queue_posts_publish_on_mon_wed_fri_in_order():
-    import datetime
+def test_queue_posts_publish_five_per_day_in_order():
+    import collections
     import blog_posts
-    queued = blog_posts.QUEUE
-    dates = [p['published'] for p in queued]
-    assert dates == sorted(dates) and len(set(dates)) == len(dates)
-    assert all(datetime.date.fromisoformat(d).weekday() in (0, 2, 4) for d in dates)
-    assert dates[0] == '2026-11-09'
+    dates = [p['published'] for p in blog_posts.QUEUE]
+    assert dates == sorted(dates) and dates[0] == '2026-11-09'
+    per_day = collections.Counter(dates)
+    assert max(per_day.values()) == blog_posts.PER_DAY == 5
+    assert all(count == 5 for day, count in per_day.items() if day != dates[-1])  # only the last day may be partial

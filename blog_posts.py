@@ -521,23 +521,19 @@ for _post in POSTS:
     _post.setdefault('steps', STEPS.get(_post['slug'], []))
 
 
-# --- Scheduled queue: published on Monday, Wednesday and Friday, starting 2026-11-09 -----------------------------------
+# --- Scheduled queue: PER_DAY posts every day, starting 2026-11-09 --------------------------------------------------------
 from datetime import date as _date, timedelta as _timedelta  # noqa: E402
 from blog_queue_1 import QUEUE_1  # noqa: E402
 
 QUEUE = list(QUEUE_1)
 SCHEDULE_START = _date(2026, 11, 9)
-PUBLISH_WEEKDAYS = (0, 2, 4)
+PER_DAY = 5
 
 
-def _schedule(items, start):
-    day = start
-    for item in items:
-        while day.weekday() not in PUBLISH_WEEKDAYS:
-            day += _timedelta(days=1)
-        item['published'] = day.isoformat()
+def _schedule(items, start, per_day=PER_DAY):
+    for number, item in enumerate(items):
+        item['published'] = (start + _timedelta(days=number // per_day)).isoformat()
         item.setdefault('steps', [])
-        day += _timedelta(days=1)
     return items
 
 
