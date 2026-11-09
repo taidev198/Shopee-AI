@@ -48,7 +48,7 @@
 
   function section(product) {
     if(product?.role!=='own')return '';
-    return `<section class="product-detail-section sp-section" data-similar-products="${escape(product.sku)}"><h3>Đối thủ cùng ngành &amp; sản phẩm tương tự</h3><div class="sp-stored" data-sp-stored><h4>Sản phẩm cùng tên đã lưu từ phân tích đối thủ</h4><p class="sp-loading" role="status">Đang đọc dữ liệu đã lưu…</p></div><div class="sp-market" data-sp-market><p class="sp-loading" role="status">Đang chuẩn bị tìm trên toàn sàn Shopee…</p></div></section>`;
+    return `<section class="product-detail-section sp-section" data-similar-products="${escape(product.sku)}"><h3>Đối thủ cùng ngành &amp; sản phẩm tương tự</h3><div class="sp-stored" data-sp-stored><h4>Sản phẩm cùng tên đã lưu từ phân tích đối thủ</h4><p class="sp-loading" role="status"><span class="sp-spinner" aria-hidden="true"></span> Đang đọc dữ liệu đã lưu…</p></div><div class="sp-market" data-sp-market><p class="sp-loading" role="status">Đang chuẩn bị tìm trên toàn sàn Shopee…</p></div></section>`;
   }
 
   // ---- Whole-marketplace search (live, through the MarketLens Chrome extension) ----
@@ -80,7 +80,7 @@
   function marketBody(product,state) {
     const form=marketForm(product,state.query,state.busy);
     const head='<h4>Trên toàn sàn Shopee (cùng ngành hàng, mọi shop)</h4>';
-    if(state.busy)return `${head}${form}<p class="sp-loading" role="status">Chrome đang đọc kết quả tìm kiếm Shopee cho “${escape(state.query)}” — thường mất 15–40 giây. Đừng đóng cửa sổ Chrome.</p>`;
+    if(state.busy)return `${head}${form}${loader(state)}`;
     if(state.error)return `${head}${form}<p class="sp-error" role="alert">${escape(state.error)}</p>`;
     const ownSeller=String(product.sku).split('.')[0];
     const cards=list(state.cards).filter(card=>String(card.seller_id)!==ownSeller&&`${card.seller_id}.${card.product_id}`!==String(product.sku))
@@ -96,6 +96,28 @@
     return `${head}${form}${verdict}${stats}${table}<p class="sp-foot">Đọc trực tiếp từ trang tìm kiếm Shopee lúc ${escape(new Date(state.at).toLocaleTimeString('vi-VN'))}, xếp theo thứ tự Shopee. Giá là giá hiển thị trên thẻ (lấy mức thấp nhất nếu là khoảng giá). Chưa xác minh quy cách nên chỉ dùng để tham khảo.</p>`;
   }
 
+  // Progress feedback for the ~15-60s live search: bar eases toward 95% and never claims completion early.
+  const steps=[[0,'Đang mở trang tìm kiếm Shopee…'],[6,'Đang đọc danh sách sản phẩm trên Shopee…'],[22,'Đang cuộn để tải thêm kết quả…'],[40,'Sắp xong, đang tổng hợp giá và số đã bán…']];
+  function progress(state) {
+    const seconds=(Date.now()-state.startedAt)/1000;
+    const percent=Math.min(95,Math.round(95*(1-Math.exp(-seconds/22))));
+    const step=[...steps].reverse().find(([from])=>seconds>=from)[1];
+    return {seconds:Math.floor(seconds),percent,step};
+  }
+  function loader(state) {
+    const {seconds,percent,step}=progress(state);
+    return `<div class="sp-loader" role="status" aria-live="polite"><div class="sp-loader-head"><span class="sp-spinner" aria-hidden="true"></span><strong data-sp-step>${escape(step)}</strong><span data-sp-elapsed>${seconds}s</span></div><div class="sp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span data-sp-bar style="width:${percent}%"></span></div><small>Từ khóa “${escape(state.query)}” · thường mất dưới 1 phút. Chrome đọc ở cửa sổ thu nhỏ; đừng đóng Chrome.</small></div>`;
+  }
+  function tick(product,state) {
+    const root=marketRoot(product);
+    if(!state.busy||!root?.isConnected){clearInterval(state.timer);state.timer=null;return;}
+    const {seconds,percent,step}=progress(state);
+    const set=(selector,apply)=>{const node=root.querySelector(selector);if(node)apply(node);};
+    set('[data-sp-step]',node=>{node.textContent=step;});
+    set('[data-sp-elapsed]',node=>{node.textContent=seconds+'s';});
+    set('[data-sp-bar]',node=>{node.style.width=percent+'%';node.parentElement?.setAttribute?.('aria-valuenow',String(percent));});
+  }
+
   function marketRoot(product) {
     return document.querySelector(`[data-similar-products="${CSS.escape(String(product.sku))}"] [data-sp-market]`);
   }
@@ -106,8 +128,8 @@
 
   async function runMarket(product,query) {
     const key=JSON.stringify([String(S.shopId||''),String(product.sku)]);
-    const state={query,busy:true,error:'',cards:[],at:Date.now()};
-    marketCache.set(key,state);draw(product,state);
+    const state={query,busy:true,error:'',cards:[],at:Date.now(),startedAt:Date.now(),timer:null};
+    marketCache.set(key,state);draw(product,state);state.timer=setInterval(()=>tick(product,state),500);
     try {
       const bridge=await window.MarketLensChrome?.ping?.();
       if(!bridge||bridge.capabilities?.similar!==true||typeof window.MarketLensChrome.similar!=='function')
@@ -117,7 +139,7 @@
       if(!state.cards.length)state.error='Shopee không trả sản phẩm nào cho từ khóa này.';
     }catch(error){
       state.error=error?.code==='bridge_timeout'?'Chưa kết nối tiện ích MarketLens trong Chrome. Cài hoặc tải lại tiện ích (bản 1.9.0) rồi mở lại sản phẩm.':(error?.message||'Chưa tìm được sản phẩm trên Shopee.');
-    }finally{state.busy=false;draw(product,state);}
+    }finally{state.busy=false;clearInterval(state.timer);state.timer=null;state.at=Date.now();draw(product,state);}
   }
 
   function startMarket(product,serverQuery) {
