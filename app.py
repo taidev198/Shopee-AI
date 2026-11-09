@@ -87,6 +87,22 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title='Market Intelligence', version='0.1.0', description='Shop analytics + public DOM collection via Playwright.', lifespan=lifespan)
+
+
+@app.get('/static/marketlens-chrome-extension.zip', include_in_schema=False)
+def extension_zip():
+    """Build the extension zip from static/browser-extension on request so installs never get a stale bundle."""
+    import zipfile
+    folder = ROOT / 'static' / 'browser-extension'
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(folder.glob('*.js')) + [folder / 'manifest.json', folder / 'package.json']:
+            if path.is_file():
+                archive.write(path, f'browser-extension/{path.name}')
+    return Response(buffer.getvalue(), media_type='application/zip',
+                    headers={'Cache-Control': 'no-cache', 'Content-Disposition': 'attachment; filename=marketlens-chrome-extension.zip'})
+
+
 app.mount('/static', StaticFiles(directory=str(ROOT / 'static')), name='static')
 
 
